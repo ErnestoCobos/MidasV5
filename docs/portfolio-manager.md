@@ -9,6 +9,8 @@ El Gestor Dinámico de Portafolio es el componente central del sistema de rotaci
 - **Diversificación optimizada** mediante análisis de correlaciones
 - **Gestión de efectivo** para mantener reservas estratégicas
 - **Registro de rotaciones históricas** para análisis de rendimiento
+- **Integración con sistema de feedback** para mejora continua de decisiones
+- **Arquitectura basada en eventos** para extensibilidad y observabilidad
 
 ## Arquitectura
 
@@ -20,6 +22,31 @@ El Gestor de Portafolio funciona como un sistema de eventos que:
 4. Consulta a DeepSeek para validar las decisiones de rotación
 5. Ejecuta rotaciones cuando se identifica una oportunidad superior
 6. Mantiene un historial de rotaciones y rendimiento
+7. Registra datos en el sistema de feedback para mejorar decisiones futuras
+
+```mermaid
+graph TD
+    A[Temporizador de Escaneo] -->|Intervalos configurables| B[Escaneo de Mercado]
+    B -->|Oportunidades detectadas| C[Evaluación de Rotación]
+    D[Activos actuales] -->|Métricas actualizadas| C
+    
+    C -->|Consulta| E[DeepSeek IA]
+    F[Sistema de Feedback] -->|Resultados históricos| E
+    E -->|Decisión| C
+    
+    C -->|Ejecuta rotación| G[Actualización de Portafolio]
+    G -->|Registra resultado| F
+    G -->|Persiste| H[Almacenamiento]
+    
+    subgraph "Sistema de Eventos"
+        I[Emisor de Eventos] -->|INITIALIZED| J[Suscriptores]
+        I -->|UPDATED| J
+        I -->|OPPORTUNITY_FOUND| J
+        I -->|ROTATION_EXECUTED| J
+        I -->|SCAN_COMPLETED| J
+        I -->|ERROR| J
+    end
+```
 
 ## Eventos del Sistema
 
@@ -31,6 +58,12 @@ El sistema emite los siguientes eventos que pueden ser monitoreados:
 - `ROTATION_EXECUTED`: Cuando se ejecuta una rotación
 - `SCAN_COMPLETED`: Cuando finaliza un escaneo de mercado
 - `ERROR`: Cuando ocurre un error en algún proceso
+
+Estos eventos permiten:
+- Desarrollar interfaces de usuario reactivas
+- Implementar análisis de rendimiento en tiempo real
+- Crear alertas personalizadas
+- Extender el sistema con módulos adicionales
 
 ## Parámetros de Configuración
 
@@ -45,6 +78,47 @@ El sistema emite los siguientes eventos que pueden ser monitoreados:
 | `maxPositions` | Posiciones máximas | `2` |
 | `saveToFile` | Guardar estado en archivo | `true` |
 
+## Integración con el Sistema de Feedback
+
+El Gestor de Portafolio está estrechamente integrado con el [Sistema de Feedback](feedback-system.md) para mejorar continuamente sus decisiones:
+
+1. **Registro de resultados**: Cada rotación ejecutada se registra en el sistema de feedback
+   ```typescript
+   // Al ejecutar una rotación, registrar en el sistema de feedback
+   await this.executeRotation(candidate);
+   // Después, registrar el resultado
+   feedbackStore.recordFeedback({
+     originalSignal: deepSeekSignal,
+     marketData: marketData,
+     result: {
+       symbol: opportunity.symbol,
+       action: 'BUY',
+       // Otros datos del resultado...
+     },
+     successful: true
+   });
+   ```
+
+2. **Consulta de historial**: Al evaluar rotaciones, se consulta el historial de éxito
+   ```typescript
+   // Al evaluar una rotación, obtener estadísticas históricas
+   const symbolStats = feedbackStore.getSuccessRateForSymbol(symbol);
+   const recentFeedback = feedbackStore.getRelevantFeedback(symbol, 'BUY');
+   
+   // Incluir estadísticas en la consulta a DeepSeek
+   const rotationDecision = await this.requestPortfolioRotationDecision(
+     worstAsset, 
+     bestOpportunity,
+     symbolStats,
+     recentFeedback
+   );
+   ```
+
+3. **Adaptación de estrategias**: Las estadísticas de rendimiento influyen en decisiones futuras
+   - Mayor confianza en activos con historial exitoso
+   - Ajuste automático de parámetros basado en resultados previos
+   - Correlación de condiciones de mercado con resultados
+
 ## Gestión de Rotaciones
 
 ### Proceso de Evaluación de Rotaciones
@@ -52,8 +126,8 @@ El sistema emite los siguientes eventos que pueden ser monitoreados:
 1. Se actualiza el portafolio existente con los precios actuales
 2. Se escanea el mercado para obtener nuevas oportunidades
 3. Se compara el potencial de las nuevas oportunidades con los activos actuales
-4. Se consulta a DeepSeek para el análisis final y decisión
-5. Si la confianza supera el umbral, se ejecuta la rotación
+4. Se consulta a DeepSeek para el análisis final y decisión, incluyendo datos de feedback
+5. Si la confianza supera el umbral configurado, se ejecuta la rotación
 
 ### Ejemplo de Prompt a DeepSeek
 

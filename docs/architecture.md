@@ -10,6 +10,13 @@ El sistema midasTS está organizado en varios componentes principales que funcio
 midasTS/
 ├── src/
 │   ├── services/           # Servicios externos e internos
+│   │   ├── deepseek.ts     # Integración con IA para decisiones
+│   │   ├── feedback-store.ts  # Sistema de mejora continua
+│   │   ├── portfolio-manager.ts  # Gestión de rotaciones
+│   │   ├── market-scanner.ts  # Detección de oportunidades
+│   │   ├── binance.ts      # Conexión con exchange
+│   │   └── lunarcrush.ts   # Datos de sentimiento social
+│   ├── repositories/       # Capa de acceso a datos
 │   ├── strategies/         # Estrategias de trading
 │   ├── utils/              # Utilidades y herramientas
 │   └── index.ts            # Punto de entrada
@@ -28,10 +35,15 @@ graph TD
     Services --> LunarCrushService[LunarCrush API]
     Services --> DeepSeekService[DeepSeek AI]
     Services --> MarketDataService[Market Data]
+    Services --> FeedbackStore[Feedback System]
+    Services --> PortfolioManager[Portfolio Manager]
     
     BinanceService --> CircuitBreaker1[Circuit Breaker]
     LunarCrushService --> CircuitBreaker2[Circuit Breaker]
     DeepSeekService --> CircuitBreaker3[Circuit Breaker]
+    
+    DeepSeekService --> MultiStageDecision[Two-Stage Decision]
+    FeedbackStore --> DeepSeekService
     
     StrategyFactory --> MicroStrategy[Micro Capital Strategy]
     StrategyFactory --> GrowthStrategy[Growth Strategy]
@@ -39,9 +51,17 @@ graph TD
     MarketDataService --> Indicators[Technical Indicators]
     MarketDataService --> WorkerPool[Worker Pool]
     
+    PortfolioManager -->|Rotaciones| FeedbackStore
+    StrategyFactory -->|Resultados| FeedbackStore
+    
     WorkerPool --> IndicatorTasks[Indicator Tasks]
     WorkerPool --> PatternTasks[Pattern Recognition Tasks]
     WorkerPool --> BacktestTasks[Backtest Tasks]
+    
+    subgraph "Base de Datos"
+        Repository[Repositories]
+        Repository --> PostgreSQL[(PostgreSQL/TimescaleDB)]
+    end
     
     subgraph Robustness
         CircuitBreaker1
@@ -49,6 +69,38 @@ graph TD
         CircuitBreaker3
         ErrorTracking[Error Tracking]
         Validation[Data Validation]
+    end
+```
+
+## Flujo de Decisiones con DeepSeek y Feedback
+
+Un aspecto clave de la arquitectura es el sofisticado flujo de toma de decisiones con retroalimentación:
+
+```mermaid
+sequenceDiagram
+    participant PM as Portfolio Manager
+    participant MS as Market Scanner
+    participant DS as DeepSeek Service
+    participant FS as Feedback Store
+    participant BI as Binance API
+    
+    PM->>MS: Solicita escaneo de mercado
+    MS->>BI: Obtiene datos de mercado
+    MS->>MS: Calcula puntuaciones
+    MS->>PM: Devuelve oportunidades
+    
+    PM->>FS: Solicita estadísticas históricas
+    FS->>PM: Devuelve historial de rendimiento
+    
+    PM->>DS: Consulta decisión (incluye feedback)
+    Note over DS: Proceso en dos etapas:<br/>1. Análisis técnico puro<br/>2. Decisión basada en análisis
+    DS->>PM: Devuelve decisión con confianza
+    
+    alt Confianza > Umbral
+        PM->>BI: Ejecuta rotación
+        PM->>FS: Registra rotación para feedback
+    else Confianza < Umbral
+        PM->>PM: Mantiene portafolio actual
     end
 ```
 
@@ -131,6 +183,42 @@ graph TD
 
 - **Implementación**: Servicios en `/services`
 - **Descripción**: Encapsula lógica de acceso a APIs externas y funcionalidades coherentes.
+
+#### 4.4 Repository Pattern
+
+- **Implementación**: Repositorios en `/repositories`
+- **Descripción**: Abstracción para acceso a datos y operaciones de persistencia.
+
+#### 4.5 Observer Pattern
+
+- **Implementación**: Sistema de eventos en PortfolioManager
+- **Descripción**: Notificación de eventos a suscriptores para operaciones asíncronas.
+
+#### 4.6 Strategy Pattern
+
+- **Implementación**: Diferentes estrategias de trading
+- **Descripción**: Intercambio de algoritmos de trading según objetivos y capital.
+
+### 5. Sistema de Feedback y Aprendizaje Continuo
+
+#### 5.1 Almacén de Feedback (`services/feedback-store.ts`)
+
+- **Patrón implementado**: Singleton con Caché
+- **Descripción**: Sistema que almacena y analiza resultados de operaciones para mejorar decisiones futuras.
+- **Características principales**:
+  - Registro de operaciones completadas con resultados
+  - Cálculo de métricas de rendimiento por símbolo
+  - Integración con DeepSeek para mejorar prompts
+  - Optimización para el dimensionamiento de posiciones
+
+#### 5.2 Decisiones en Dos Etapas
+
+- **Implementación**: `decideMultiStage()` en DeepSeekService
+- **Descripción**: Proceso que separa el análisis técnico de la toma de decisiones.
+- **Ventajas**:
+  - Reduce sesgos cognitivos en el análisis
+  - Mejora calidad de decisiones mediante especialización
+  - Permite una mejor integración del feedback histórico
 
 ### 5. Buenas Prácticas
 

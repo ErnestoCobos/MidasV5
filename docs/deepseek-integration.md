@@ -8,6 +8,8 @@ DeepSeek Reasoner es el núcleo de inteligencia artificial del sistema, proporci
 - **Evaluación de rotación de portafolio**: Analiza si conviene rotar entre activos
 - **Optimización de parámetros**: Ajusta take profit, stop loss y tamaño de posición
 - **Análisis cualitativo**: Proporciona razonamiento detallado para cada decisión
+- **Decisiones en dos etapas**: Utiliza un innovador enfoque de análisis y decisión separados
+- **Aprendizaje de retroalimentación**: Mejora las decisiones basándose en resultados anteriores
 
 ## Arquitectura de Integración
 
@@ -16,28 +18,119 @@ DeepSeek se integra en múltiples puntos del sistema:
 1. **Estrategias de Trading**: Proporciona señales directas de entrada/salida
 2. **Gestor de Portafolio**: Evalúa oportunidades de rotación entre activos
 3. **Dimensionamiento de Posiciones**: Optimiza el tamaño de acuerdo al capital y riesgo
+4. **Sistema de Feedback**: Utiliza resultados anteriores para mejorar decisiones futuras
 
+```mermaid
+graph TD
+    A[Market Scanner] -->|Oportunidades| B[DeepSeek]
+    C[Market Data] -->|Datos técnicos| B
+    D[User Settings] -->|Parámetros| B
+    E[Feedback Store] -->|Resultados históricos| B
+    
+    B -->|Señales| F[Portfolio Manager]
+    B -->|Análisis| G[Trading Strategies]
+    
+    subgraph "Proceso de Decisión en Dos Etapas"
+        B1[Etapa 1: Análisis Técnico] --> B2[Etapa 2: Decisión de Trading]
+    end
+    
+    F -->|Resultados| E
 ```
-                       ┌─────────────────┐
-                       │                 │
-                       │  Market Scanner │
-                       │                 │
-                       └────────┬────────┘
-                                │
-                                ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│                 │    │                 │    │                 │
-│  Market Data    │───▶│    DeepSeek     │◀───│  User Settings  │
-│                 │    │                 │    │                 │
-└─────────────────┘    └────────┬────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │                 │
-                       │ Portfolio Mgr   │
-                       │                 │
-                       └─────────────────┘
+
+## Proceso de Decisión en Dos Etapas (Multi-Stage)
+
+El sistema implementa un innovador proceso de decisión en dos etapas que separa el análisis del mercado de la toma de decisiones:
+
+### Etapa 1: Análisis Técnico Puro
+
+En esta primera etapa, DeepSeek analiza objetivamente los datos de mercado sin ningún sesgo hacia una decisión específica:
+
+1. Recibe datos técnicos, sentiment y estadísticas históricas
+2. Analiza la situación técnica actual (tendencia, momentum, soportes/resistencias)
+3. Evalúa el contexto general del mercado
+4. Genera un análisis detallado y objetivo
+
+Esta separación evita el sesgo de confirmación y permite un análisis más neutral.
+
+### Etapa 2: Toma de Decisión
+
+Con el análisis de la primera etapa, DeepSeek toma una decisión de trading:
+
+1. Recibe el análisis técnico de la primera etapa
+2. Evalúa el resultado contra la estrategia específica (micro-capital, growth, etc.)
+3. Considera feedback de operaciones anteriores en el mismo activo
+4. Genera la señal final (BUY/SELL/HOLD) con parámetros completos
+
+### Implementación
+
+El sistema utiliza el método `decideMultiStage()` para este proceso:
+
+```typescript
+async decideMultiStage(
+  md: MarketData, 
+  capital: number = 1000, 
+  strategyType: 'micro' | 'medium' | 'large' | 'growth' = 'medium'
+): Promise<TradeSignal> {
+  // ETAPA 1: Análisis técnico puro sin decisión de trading
+  const analysisPrompt = this.buildAnalysisPrompt(md, symbol);
+  const analysis = await this.queue.add(async () => {
+    return this.llm.invoke([systemMessageAnalysis, userMessageAnalysis]);
+  });
+  
+  // ETAPA 2: Decisión de trading basada en el análisis previo
+  const decisionPrompt = this.buildDecisionPrompt(md, capital, strategyType, analysis, symbol);
+  const decision = await this.queue.add(async () => {
+    return this.llm.invoke([systemMessageDecision, userMessageDecision]);
+  });
+  
+  // Procesar y validar respuesta...
+}
 ```
+
+## Integración con Sistema de Feedback
+
+DeepSeek está integrado con un sistema de feedback que aprende de los resultados históricos:
+
+### Recopilación de Estadísticas
+
+1. Cada operación completada registra:
+   - Ganancia/pérdida porcentual
+   - Duración de la operación
+   - Si se alcanzó stop loss o take profit
+   - Condiciones de mercado
+
+2. El sistema agrupa los resultados por símbolo y calcula:
+   - Tasa de éxito global
+   - Ganancia promedio
+   - Duración promedio de operaciones
+   - Ratio de ganancias vs pérdidas
+
+### Uso del Feedback para Mejorar Decisiones
+
+El feedback se incorpora en los prompts de DeepSeek de dos formas:
+
+1. **Estadísticas globales**: Rendimiento histórico en el símbolo
+    ```
+    ESTADÍSTICAS HISTÓRICAS:
+    - Operaciones totales: 8
+    - Tasa de éxito: 62.5%
+    - Tasa de ganancia: 75.0%
+    - Ganancia promedio: 2.3%
+    ```
+
+2. **Resultados recientes**: Últimas operaciones específicas
+    ```
+    RESULTADOS RECIENTES:
+    - BUY a $135.20: ÉXITO (+2.1%, duración: 45 min)
+    - BUY a $128.50: FRACASO (-1.2%, duración: 30 min)
+    ```
+
+### Beneficios de la Integración con Feedback
+
+- **Aprendizaje continuo**: El sistema mejora con cada operación
+- **Evita errores repetidos**: Reconoce patrones problemáticos
+- **Adaptación a cada activo**: Optimiza estrategias para cada símbolo
+- **Mejora de parámetros**: Ajusta stop loss y take profit basado en resultados reales
 
 ## Prompts Especializados
 
