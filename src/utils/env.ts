@@ -12,7 +12,11 @@ const envSchema = z.object({
   // Variables opcionales con valores por defecto
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-  DRY_RUN: z.enum(['true', 'false']).default('true').transform(val => val === 'true')
+  DRY_RUN: z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
+  
+  // Variables para monitoreo y seguimiento de errores
+  SENTRY_DSN: z.string().optional().default(''),
+  SENTRY_ENVIRONMENT: z.string().optional().default('development')
 });
 
 // Función para validar y extraer variables de entorno

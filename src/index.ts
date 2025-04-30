@@ -6,6 +6,10 @@
 // Versión actualizada con mejoras de robustez y modularidad
 // -----------------------------------------------------------------------------
 
+// Inicializar todos los componentes del sistema
+import { initializeSystem } from './utils/init';
+initializeSystem();
+
 import { Command } from 'commander';
 import { logger, tradeLogger } from './utils/logging';
 import { env, isDryRun } from './utils/env';
