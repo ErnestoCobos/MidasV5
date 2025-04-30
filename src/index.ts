@@ -17,7 +17,68 @@ import { marketDataService } from './services/market-data';
 import { microCapitalStrategy, microGrowthStrategy, MicroCapitalStrategy } from './strategies/micro-capital';
 import { tradeHistoryService } from './services/trade-history';
 import { db } from './services/database';
+import { TelegramService } from './services/telegram';
 import PQueue from 'p-queue';
+
+// Variable global para la instancia del servicio de Telegram
+let globalTelegramService: TelegramService | null = null;
+
+/**
+ * Obtiene la instancia global del servicio de Telegram
+ */
+export function getTelegramService(): TelegramService | null {
+  return globalTelegramService;
+}
+
+/**
+ * Inicializa el servicio de Telegram si no está ya inicializado
+ */
+export async function initTelegramService(options: { notify?: boolean } = {}): Promise<TelegramService> {
+  if (!globalTelegramService) {
+    globalTelegramService = new TelegramService();
+    await globalTelegramService.start();
+    
+    // Enviar notificación de inicio si se solicitó
+    if (options.notify) {
+      await globalTelegramService.sendNotificationToAll(`
+🚀 <b>Bot de MidasTS Iniciado</b>
+
+El sistema de trading está ahora en línea y listo para operar.
+Usa /menu para ver las opciones disponibles.
+
+<i>Iniciado: ${new Date().toLocaleString()}</i>
+      `);
+    }
+  }
+  return globalTelegramService;
+}
+
+/**
+ * Verifica conexiones a servicios necesarios para Telegram
+ */
+async function verificarConexiones() {
+  logger.info('Verificando conexión a servicios...');
+  
+  try {
+    // Comprobar conexión a Binance
+    await binanceService.getTicker24H('BTCUSDT');
+    logger.info('✅ Servicio de Binance conectado');
+    
+    // Comprobar conexión a LunarCrush
+    await lunarCrushService.galaxyScore('BTC');
+    logger.info('✅ Servicio de LunarCrush conectado');
+    
+    // Comprobar conexión a base de datos (si el método existe)
+    if (typeof db.testConnection === 'function') {
+      await db.testConnection();
+      logger.info('✅ Base de datos conectada');
+    } else {
+      logger.info('⚠️ No se pudo verificar la conexión a la base de datos');
+    }
+  } catch (error) {
+    logger.warn({ error }, 'Algunas conexiones no están disponibles. El bot puede funcionar con limitaciones.');
+  }
+}
 
 // -----------------------------------------------------------------------------
 // Estrategia Factory 
@@ -329,12 +390,40 @@ cli
   .option('-q, --quote <usd>', 'USDT notional per trade', (v) => Number(v), 20)
   .option('-i, --interval <sec>', 'loop interval', (v) => Number(v), 30)
   .option('--dry-run', 'no real orders')
-  .action((o) => runBot({ 
-    symbol: o.symbol, 
-    quote: o.quote, 
-    interval: o.interval, 
-    dryRun: !!o.dryRun 
-  }));
+  .option('--with-telegram', 'iniciar también el bot de Telegram')
+  .option('--notify', 'enviar notificación de inicio por Telegram')
+  .action(async (o) => {
+    // Iniciar bot de Telegram si se solicitó
+    if (o.withTelegram) {
+      try {
+        const telegramService = await initTelegramService();
+        logger.info('🤖 Bot de Telegram iniciado correctamente');
+        
+        // Enviar notificación si se solicitó
+        if (o.notify) {
+          await telegramService.sendNotificationToAll(`
+🚀 <b>MidasTS: Modo Trading Iniciado</b>
+
+Símbolo: ${o.symbol}
+Intervalo: ${o.interval}s
+Modo prueba: ${o.dryRun ? 'Sí' : 'No'}
+
+<i>Iniciado: ${new Date().toLocaleString()}</i>
+          `);
+        }
+      } catch (error) {
+        logger.error({ error }, 'Error al iniciar el bot de Telegram');
+      }
+    }
+    
+    // Ejecutar el bot de trading
+    runBot({ 
+      symbol: o.symbol, 
+      quote: o.quote, 
+      interval: o.interval, 
+      dryRun: !!o.dryRun 
+    });
+  });
 
 // Comando para micro-trading
 cli
@@ -352,13 +441,39 @@ cli
   .option('--allow-bearish', 'Permitir operaciones en mercado bajista')
   .option('--growth-mode', 'Activar modo de crecimiento acelerado (equivalente a --strategy growth)')
   .option('--dry-run', 'Simulación sin ejecución real')
-  .action((o) => {
+  .option('--with-telegram', 'iniciar también el bot de Telegram')
+  .option('--notify', 'enviar notificación de inicio por Telegram')
+  .action(async (o) => {
     // Si se activó el modo de crecimiento, sobreescribir la estrategia
     if (o.growthMode) {
       o.strategy = 'growth';
       // Ajustar parámetros óptimos para crecimiento
       if (o.minConfidence === 0.85) o.minConfidence = 0.80; // Usar umbral más permisivo si no se especificó
       if (!o.ignoreMarketConditions) o.ignoreMarketConditions = true; // Ignorar condiciones de mercado por defecto
+    }
+    
+    // Iniciar bot de Telegram si se solicitó
+    if (o.withTelegram) {
+      try {
+        const telegramService = await initTelegramService();
+        logger.info('🤖 Bot de Telegram iniciado correctamente');
+        
+        // Enviar notificación si se solicitó
+        if (o.notify) {
+          await telegramService.sendNotificationToAll(`
+🚀 <b>MidasTS: Modo Micro-Trading Iniciado</b>
+
+Símbolo: ${o.symbol}
+Capital: $${o.capital}
+Estrategia: ${o.strategy}
+Modo prueba: ${o.dryRun ? 'Sí' : 'No'}
+
+<i>Iniciado: ${new Date().toLocaleString()}</i>
+          `);
+        }
+      } catch (error) {
+        logger.error({ error }, 'Error al iniciar el bot de Telegram');
+      }
     }
     
     runMicroTrading({ 
@@ -725,6 +840,80 @@ cli
       console.error(`Error escaneando mercado: ${error.message}`);
     }
   });
+
+// Comando específico para Telegram
+cli
+  .command('telegram')
+  .description('Iniciar el bot de Telegram')
+  .option('--no-notify', 'No enviar notificación de inicio')
+  .option('--debug', 'Mostrar información de depuración')
+  .action(async (o) => {
+    try {
+      logger.info('Iniciando bot de Telegram...');
+      
+      // Verificar conexiones necesarias
+      await verificarConexiones();
+      
+      // Iniciar el bot de Telegram
+      const telegramService = await initTelegramService({
+        notify: o.notify !== false
+      });
+      
+      logger.info('🤖 Bot de Telegram iniciado correctamente');
+      logger.info('Presiona Ctrl+C para detener el bot');
+      
+      // Manejar señales para cierre graceful
+      process.once('SIGINT', async () => {
+        logger.info('Recibida señal SIGINT, deteniendo el bot...');
+        await telegramService.stop('SIGINT');
+        process.exit(0);
+      });
+      
+      process.once('SIGTERM', async () => {
+        logger.info('Recibida señal SIGTERM, deteniendo el bot...');
+        await telegramService.stop('SIGTERM');
+        process.exit(0);
+      });
+    } catch (error) {
+      logger.error({ error }, 'Error al iniciar el bot de Telegram');
+    }
+  });
+
+// Función que ejecuta el comando telegram (para ser utilizada por run-telegram-bot.ts)
+export async function telegramCommand(options: { notify?: boolean, debug?: boolean } = {}) {
+  try {
+    logger.info('Iniciando bot de Telegram...');
+    
+    // Verificar conexiones necesarias
+    await verificarConexiones();
+    
+    // Iniciar el bot de Telegram
+    const telegramService = await initTelegramService({
+      notify: options.notify !== false
+    });
+    
+    logger.info('🤖 Bot de Telegram iniciado correctamente');
+    logger.info('Presiona Ctrl+C para detener el bot');
+    
+    // Manejar señales para cierre graceful
+    process.once('SIGINT', async () => {
+      logger.info('Recibida señal SIGINT, deteniendo el bot...');
+      await telegramService.stop('SIGINT');
+      process.exit(0);
+    });
+    
+    process.once('SIGTERM', async () => {
+      logger.info('Recibida señal SIGTERM, deteniendo el bot...');
+      await telegramService.stop('SIGTERM');
+      process.exit(0);
+    });
+    
+    return telegramService;
+  } catch (error) {
+    logger.error({ error }, 'Error al iniciar el bot de Telegram');
+    throw error;
+  }
+}
 
 // Inicializar el sistema asincrónicamente primero
 (async () => {

@@ -16,13 +16,25 @@ TELEGRAM_ADMIN_USERS=1336702235
 
 ## ¿Cómo Iniciar el Bot?
 
-Ejecuta el siguiente comando para iniciar el bot:
+Ahora tienes varias formas de iniciar el bot:
 
+### Opción 1: Comando Dedicado (Recomendado)
+```bash
+node src/index.js telegram
+```
+
+### Opción 2: Compatibilidad con Versiones Anteriores
 ```bash
 npm run telegram-bot
 ```
 
-El servicio verificará las conexiones a las APIs necesarias e iniciará el bot.
+### Opción 3: Integrado con Comandos de Trading
+```bash
+node src/index.js trade --with-telegram --notify
+node src/index.js micro-trade --with-telegram --notify
+```
+
+El servicio verificará las conexiones a las APIs necesarias e iniciará el bot. Cuando se utiliza la opción `--notify`, se enviará una notificación a todos los usuarios autorizados.
 
 ## Comandos Disponibles
 
