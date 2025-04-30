@@ -16,7 +16,22 @@ const envSchema = z.object({
   
   // Variables para monitoreo y seguimiento de errores
   SENTRY_DSN: z.string().optional().default(''),
-  SENTRY_ENVIRONMENT: z.string().optional().default('development')
+  SENTRY_ENVIRONMENT: z.string().optional().default('development'),
+  
+  // Variables para PostgreSQL
+  DATABASE_URL: z.string().optional().default('postgres://vultradmin:AVNS_zBGNTQuTGII6zzEqP8i@vultr-prod-c887c024-0af5-4d3e-811c-063368f8c475-vultr-prod-09bb.vultrdb.com:16751/defaultdb'),
+  DATABASE_SSL: z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
+  DATABASE_MAX_CONNECTIONS: z.string().default('20').transform(val => parseInt(val, 10)),
+  DATABASE_IDLE_TIMEOUT: z.string().default('30000').transform(val => parseInt(val, 10)),
+  
+  // Variables para migración de datos
+  MIGRATE_DATA: z.enum(['true', 'false']).default('false').transform(val => val === 'true'),
+  BACKUP_JSON_FILES: z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
+  
+  // Variables para TimescaleDB
+  USE_TIMESCALE: z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
+  TIMESCALE_CHUNK_INTERVAL_DAYS: z.string().default('1').transform(val => parseInt(val, 10)),
+  TIMESCALE_COMPRESSION_AFTER_DAYS: z.string().default('7').transform(val => parseInt(val, 10))
 });
 
 // Función para validar y extraer variables de entorno

@@ -1,7 +1,6 @@
-import fs from 'fs';
-import path from 'path';
 import { logger } from '../utils/logging';
 import { TradeSignal } from './deepseek';
+import { tradeRepository } from '../repositories/trade-repository';
 
 /**
  * Estructura para almacenar información de operaciones realizadas
@@ -40,81 +39,11 @@ export interface TradeOperation {
 
 /**
  * Servicio para manejar la persistencia y análisis del historial de operaciones
+ * Utiliza una base de datos PostgreSQL para el almacenamiento persistente
  */
 export class TradeHistoryService {
-  private trades: TradeOperation[] = [];
-  private storageFilePath: string;
-  private isLoaded: boolean = false;
-  
-  constructor(storagePath?: string) {
-    // Definir la ruta del archivo de almacenamiento
-    this.storageFilePath = storagePath || path.join(process.cwd(), 'trade_history.json');
-    
-    // Intentar cargar historial existente
-    this.loadTradeHistory();
-    
-    logger.info({ 
-      storagePath: this.storageFilePath,
-      tradesLoaded: this.trades.length
-    }, 'Trade history service initialized');
-  }
-  
-  /**
-   * Carga el historial de operaciones desde el archivo
-   */
-  private loadTradeHistory(): void {
-    try {
-      if (fs.existsSync(this.storageFilePath)) {
-        const data = fs.readFileSync(this.storageFilePath, 'utf8');
-        this.trades = JSON.parse(data);
-        this.isLoaded = true;
-        
-        logger.info({ 
-          tradesCount: this.trades.length 
-        }, 'Trade history loaded from storage');
-      } else {
-        logger.info('No trade history file found, starting with empty history');
-        this.trades = [];
-        this.isLoaded = true;
-      }
-    } catch (error: any) {
-      logger.error({ 
-        error: error.message,
-        path: this.storageFilePath
-      }, 'Error loading trade history');
-      
-      // Inicializar con array vacío en caso de error
-      this.trades = [];
-      this.isLoaded = true;
-    }
-  }
-  
-  /**
-   * Guarda el historial de operaciones en el archivo
-   */
-  private saveTradeHistory(): void {
-    try {
-      const dirPath = path.dirname(this.storageFilePath);
-      
-      // Asegurar que el directorio existe
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-      }
-      
-      fs.writeFileSync(
-        this.storageFilePath, 
-        JSON.stringify(this.trades, null, 2),
-        'utf8'
-      );
-      
-      logger.debug({
-        tradesCount: this.trades.length
-      }, 'Trade history saved to storage');
-    } catch (error: any) {
-      logger.error({ 
-        error: error.message 
-      }, 'Error saving trade history');
-    }
+  constructor() {
+    logger.info('Trade history service initialized with PostgreSQL database');
   }
   
   /**
@@ -125,12 +54,12 @@ export class TradeHistoryService {
    * @param strategyType Tipo de estrategia utilizada
    * @returns El ID de la operación registrada
    */
-  registerBuyOperation(
+  async registerBuyOperation(
     buyOrder: any,
     symbol: string,
     signal: TradeSignal,
     strategyType: string = 'micro'
-  ): string {
+  ): Promise<string> {
     try {
       // Si no tiene un ID de operación correcta (p.ej. en modo de simulación)
       // o si hay algún error, generar un ID temporal
@@ -167,9 +96,8 @@ export class TradeHistoryService {
         executionType: 'BOT'
       };
       
-      // Añadir al historial y guardar
-      this.trades.push(trade);
-      this.saveTradeHistory();
+      // Guardar en la base de datos
+      await tradeRepository.saveTrade(trade);
       
       logger.info({ 
         tradeId: trade.id,
@@ -177,7 +105,7 @@ export class TradeHistoryService {
         action: 'BUY',
         entry: price,
         positionSize
-      }, 'New buy operation registered');
+      }, 'New buy operation registered in database');
       
       return trade.id;
     } catch (error: any) {
@@ -197,15 +125,15 @@ export class TradeHistoryService {
    * @param symbol El par de trading
    * @returns True si se encontró y actualizó correctamente la operación
    */
-  registerSellOperation(
+  async registerSellOperation(
     sellOrder: any,
     symbol: string
-  ): boolean {
+  ): Promise<boolean> {
     try {
       // Encontrar la operación abierta más reciente para este par
-      const openTradeIndex = this.findOpenTradeIndex(symbol);
+      const openTrade = await tradeRepository.findOpenTradeBySymbol(symbol);
       
-      if (openTradeIndex === -1) {
+      if (!openTrade) {
         logger.warn({ 
           symbol,
           sellOrderId: sellOrder?.orderId
@@ -214,36 +142,33 @@ export class TradeHistoryService {
         return false;
       }
       
-      // Obtener la operación
-      const trade = this.trades[openTradeIndex];
-      
       // Calcular P&L
       const exitPrice = Number(sellOrder?.price) || 0;
-      const pnl = (exitPrice - trade.entry) * Number(trade.quantity);
-      const pnlPercent = ((exitPrice / trade.entry) - 1) * 100;
+      const pnl = (exitPrice - openTrade.entry) * Number(openTrade.quantity);
+      const pnlPercent = ((exitPrice / openTrade.entry) - 1) * 100;
       
       // Actualizar la operación
-      this.trades[openTradeIndex] = {
-        ...trade,
+      const updatedTrade: TradeOperation = {
+        ...openTrade,
         exitPrice,
         exitTimestamp: Date.now(),
         pnl,
         pnlPercent,
         status: 'CLOSED',
         orderIds: {
-          ...trade.orderIds,
+          ...openTrade.orderIds,
           exit: sellOrder?.orderId || `sim-sell-${Date.now()}`
         }
       };
       
-      // Guardar cambios
-      this.saveTradeHistory();
+      // Guardar cambios en la base de datos
+      await tradeRepository.saveTrade(updatedTrade);
       
       logger.info({ 
-        tradeId: trade.id,
+        tradeId: openTrade.id,
         symbol,
         action: 'SELL',
-        entry: trade.entry,
+        entry: openTrade.entry,
         exit: exitPrice,
         pnl: pnl.toFixed(2),
         pnlPercent: pnlPercent.toFixed(2) + '%'
@@ -262,59 +187,35 @@ export class TradeHistoryService {
   }
   
   /**
-   * Busca el índice de la operación abierta más reciente para un par
-   * @param symbol Par de trading
-   * @returns Índice en el array o -1 si no se encuentra
-   */
-  private findOpenTradeIndex(symbol: string): number {
-    // Buscar desde el final (más reciente) hacia atrás
-    for (let i = this.trades.length - 1; i >= 0; i--) {
-      if (this.trades[i].symbol === symbol && this.trades[i].status === 'OPEN') {
-        return i;
-      }
-    }
-    return -1;
-  }
-  
-  /**
    * Obtiene el historial de operaciones
    * @param filters Filtros opcionales
    * @returns Array de operaciones filtradas
    */
-  getTradeHistory(filters?: {
+  async getTradeHistory(filters?: {
     symbol?: string;
     status?: 'OPEN' | 'CLOSED' | 'CANCELLED';
     strategyType?: string;
     dateFrom?: Date;
     dateTo?: Date;
     limit?: number;
-  }): TradeOperation[] {
-    // Asegurar que los datos están cargados
-    if (!this.isLoaded) {
-      this.loadTradeHistory();
+  }): Promise<TradeOperation[]> {
+    try {
+      // Convertir los filtros al formato esperado por el repositorio
+      const repoFilters = {
+        symbol: filters?.symbol,
+        status: filters?.status,
+        strategyType: filters?.strategyType,
+        dateFrom: filters?.dateFrom,
+        dateTo: filters?.dateTo,
+        limit: filters?.limit
+      };
+      
+      // Obtener las operaciones de la base de datos
+      return await tradeRepository.findTrades(repoFilters);
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Error getting trade history');
+      return [];
     }
-    
-    // Si no hay filtros, devolver todo
-    if (!filters) {
-      return this.trades;
-    }
-    
-    // Filtrar según los criterios
-    let result = this.trades.filter(trade => {
-      if (filters.symbol && trade.symbol !== filters.symbol) return false;
-      if (filters.status && trade.status !== filters.status) return false;
-      if (filters.strategyType && trade.strategyType !== filters.strategyType) return false;
-      if (filters.dateFrom && trade.timestamp < filters.dateFrom.getTime()) return false;
-      if (filters.dateTo && trade.timestamp > filters.dateTo.getTime()) return false;
-      return true;
-    });
-    
-    // Aplicar límite si está definido
-    if (filters.limit && filters.limit > 0) {
-      result = result.slice(-filters.limit);
-    }
-    
-    return result;
   }
   
   /**
@@ -323,7 +224,7 @@ export class TradeHistoryService {
    * @param days Número de días a analizar (por defecto: 30)
    * @returns Estadísticas de rendimiento
    */
-  getPerformanceStats(symbol?: string, days: number = 30): {
+  async getPerformanceStats(symbol?: string, days: number = 30): Promise<{
     totalTrades: number;
     winningTrades: number;
     losingTrades: number;
@@ -334,53 +235,27 @@ export class TradeHistoryService {
     bestTrade: number;
     worstTrade: number;
     openPositions: number;
-  } {
-    // Calcular timestamp para el filtro de días
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - days);
-    const fromTimestamp = fromDate.getTime();
-    
-    // Filtrar operaciones cerradas en el período especificado
-    const filteredTrades = this.trades.filter(trade => {
-      if (symbol && trade.symbol !== symbol) return false;
-      if (trade.timestamp < fromTimestamp) return false;
-      return true;
-    });
-    
-    // Clasificar en abiertas y cerradas
-    const closedTrades = filteredTrades.filter(t => t.status === 'CLOSED');
-    const openTrades = filteredTrades.filter(t => t.status === 'OPEN');
-    
-    // Calcular estadísticas básicas
-    const totalTrades = closedTrades.length;
-    const winningTrades = closedTrades.filter(t => (t.pnl || 0) > 0).length;
-    const losingTrades = closedTrades.filter(t => (t.pnl || 0) < 0).length;
-    
-    // Calcular métricas
-    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
-    const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-    const averagePnl = totalTrades > 0 ? totalPnl / totalTrades : 0;
-    const averagePnlPercent = totalTrades > 0 
-      ? closedTrades.reduce((sum, t) => sum + (t.pnlPercent || 0), 0) / totalTrades 
-      : 0;
-    
-    // Mejor y peor operación
-    const pnls = closedTrades.map(t => t.pnl || 0);
-    const bestTrade = pnls.length > 0 ? Math.max(...pnls) : 0;
-    const worstTrade = pnls.length > 0 ? Math.min(...pnls) : 0;
-    
-    return {
-      totalTrades,
-      winningTrades,
-      losingTrades,
-      winRate,
-      averagePnl,
-      averagePnlPercent,
-      totalPnl,
-      bestTrade,
-      worstTrade,
-      openPositions: openTrades.length
-    };
+  }> {
+    try {
+      // Usar el repositorio para obtener las estadísticas
+      return await tradeRepository.getPerformanceStats(symbol, days);
+    } catch (error: any) {
+      logger.error({ error: error.message, symbol, days }, 'Error getting performance stats');
+      
+      // Devolver valores por defecto en caso de error
+      return {
+        totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        winRate: 0,
+        averagePnl: 0,
+        averagePnlPercent: 0,
+        totalPnl: 0,
+        bestTrade: 0,
+        worstTrade: 0,
+        openPositions: 0
+      };
+    }
   }
   
   /**
@@ -388,10 +263,13 @@ export class TradeHistoryService {
    * @param symbol Par de trading
    * @returns La operación abierta o undefined si no existe
    */
-  getOpenTrade(symbol: string): TradeOperation | undefined {
-    const index = this.findOpenTradeIndex(symbol);
-    if (index === -1) return undefined;
-    return this.trades[index];
+  async getOpenTrade(symbol: string): Promise<TradeOperation | null> {
+    try {
+      return await tradeRepository.findOpenTradeBySymbol(symbol);
+    } catch (error: any) {
+      logger.error({ error: error.message, symbol }, 'Error getting open trade');
+      return null;
+    }
   }
   
   /**
@@ -400,15 +278,11 @@ export class TradeHistoryService {
    * @param note Nota a añadir
    * @returns true si se actualizó correctamente
    */
-  addNoteToTrade(tradeId: string, note: string): boolean {
+  async addNoteToTrade(tradeId: string, note: string): Promise<boolean> {
     try {
-      const index = this.trades.findIndex(t => t.id === tradeId);
-      if (index === -1) return false;
-      
-      this.trades[index].notes = note;
-      this.saveTradeHistory();
-      return true;
-    } catch (error) {
+      return await tradeRepository.addNoteToTrade(tradeId, note);
+    } catch (error: any) {
+      logger.error({ error: error.message, tradeId }, 'Error adding note to trade');
       return false;
     }
   }
@@ -419,25 +293,11 @@ export class TradeHistoryService {
    * @param tags Etiquetas a añadir
    * @returns true si se actualizó correctamente
    */
-  addTagsToTrade(tradeId: string, tags: string[]): boolean {
+  async addTagsToTrade(tradeId: string, tags: string[]): Promise<boolean> {
     try {
-      const index = this.trades.findIndex(t => t.id === tradeId);
-      if (index === -1) return false;
-      
-      if (!this.trades[index].tags) {
-        this.trades[index].tags = [];
-      }
-      
-      // Añadir etiquetas nuevas sin duplicar
-      for (const tag of tags) {
-        if (!this.trades[index].tags!.includes(tag)) {
-          this.trades[index].tags!.push(tag);
-        }
-      }
-      
-      this.saveTradeHistory();
-      return true;
-    } catch (error) {
+      return await tradeRepository.addTagsToTrade(tradeId, tags);
+    } catch (error: any) {
+      logger.error({ error: error.message, tradeId }, 'Error adding tags to trade');
       return false;
     }
   }

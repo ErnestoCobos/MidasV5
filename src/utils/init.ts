@@ -10,15 +10,30 @@ import { logger } from './logging';
 import { workerPool } from './worker-pool';
 import '../utils/worker-tasks'; // Cargar task handlers
 import { CircuitBreakerRegistry } from './circuit-breaker';
+import { initializeDatabase } from './db-migration';
 
 /**
  * Inicializa todos los componentes del sistema
  */
-export function initializeSystem(): void {
+export async function initializeSystem(): Promise<void> {
   logger.info('Inicializando sistema...');
   
   // Inicializar tracking de errores
   initSentry();
+  
+  // Inicializar base de datos PostgreSQL
+  try {
+    const dbInitialized = await initializeDatabase();
+    if (dbInitialized) {
+      logger.info('Base de datos inicializada correctamente');
+    } else {
+      logger.warn('No se pudo inicializar la base de datos correctamente');
+    }
+  } catch (error) {
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error)
+    }, 'Error al inicializar la base de datos');
+  }
   
   // Inicializar worker pool
   try {

@@ -6,11 +6,8 @@
 // Versión actualizada con mejoras de robustez y modularidad
 // -----------------------------------------------------------------------------
 
-// Inicializar todos los componentes del sistema
-import { initializeSystem } from './utils/init';
-initializeSystem();
-
 import { Command } from 'commander';
+import { initializeSystem } from './utils/init';
 import { logger, tradeLogger } from './utils/logging';
 import { env, isDryRun } from './utils/env';
 import { lunarCrushService } from './services/lunarcrush';
@@ -19,6 +16,7 @@ import { binanceService } from './services/binance';
 import { marketDataService } from './services/market-data';
 import { microCapitalStrategy, microGrowthStrategy, MicroCapitalStrategy } from './strategies/micro-capital';
 import { tradeHistoryService } from './services/trade-history';
+import { db } from './services/database';
 import PQueue from 'p-queue';
 
 // -----------------------------------------------------------------------------
@@ -137,7 +135,7 @@ async function runBot(opts: {
               
               // Registrar operación en el historial
               if (buyOrder) {
-                tradeHistoryService.registerBuyOperation(
+                await tradeHistoryService.registerBuyOperation(
                   buyOrder,
                   opts.symbol,
                   signal,
@@ -150,7 +148,7 @@ async function runBot(opts: {
               
               // Registrar venta en el historial
               if (sellOrder) {
-                tradeHistoryService.registerSellOperation(
+                await tradeHistoryService.registerSellOperation(
                   sellOrder,
                   opts.symbol
                 );
@@ -286,7 +284,7 @@ async function runMicroTrading(opts: {
               
               // Registrar operación en el historial
               if (buyOrder) {
-                tradeHistoryService.registerBuyOperation(
+                await tradeHistoryService.registerBuyOperation(
                   buyOrder,
                   opts.symbol,
                   signal,
@@ -299,7 +297,7 @@ async function runMicroTrading(opts: {
               
               // Registrar venta en el historial
               if (sellOrder) {
-                tradeHistoryService.registerSellOperation(
+                await tradeHistoryService.registerSellOperation(
                   sellOrder,
                   opts.symbol
                 );
@@ -404,10 +402,10 @@ cli
     });
   });
 
-// Comando para diagnosticar conexiones API
+// Comando para diagnosticar conexiones API y base de datos
 cli
   .command('diagnose')
-  .description('Diagnosticar conexiones a APIs')
+  .description('Diagnosticar conexiones a APIs y base de datos')
   .action(async () => {
     console.log('=== DIAGNÓSTICO DE APIs ===');
     
@@ -448,6 +446,27 @@ cli
       }
     } catch (error: any) {
       console.log(`❌ Binance Error: ${error.message}`);
+    }
+    
+    // Probar la base de datos PostgreSQL
+    console.log('\nProbando conexión a PostgreSQL...');
+    try {
+      const isConnected = await db.testConnection();
+      if (isConnected) {
+        console.log('✅ PostgreSQL OK: Conexión establecida correctamente');
+        
+        // Verificar si TimescaleDB está disponible
+        const hasTimescaleDB = await db.hasTimescaleDB();
+        if (hasTimescaleDB) {
+          console.log('✅ TimescaleDB OK: Extensión activa y disponible');
+        } else {
+          console.log('ℹ️ TimescaleDB no está disponible (opcional, pero recomendado para datos temporales)');
+        }
+      } else {
+        console.log('❌ PostgreSQL Error: No se pudo establecer conexión');
+      }
+    } catch (error: any) {
+      console.log(`❌ PostgreSQL Error: ${error.message}`);
     }
     
     console.log('\n=== DIAGNÓSTICO COMPLETADO ===');
@@ -505,7 +524,7 @@ cli
     
     try {
       // Obtener estadísticas
-      const stats = tradeHistoryService.getPerformanceStats(o.symbol, o.days);
+      const stats = await tradeHistoryService.getPerformanceStats(o.symbol, o.days);
       
       // Mostrar estadísticas globales
       console.log(`\nEstadísticas (últimos ${o.days} días):`);
@@ -533,7 +552,7 @@ cli
       }
       
       // Obtener historial de operaciones
-      const trades = tradeHistoryService.getTradeHistory(filters);
+      const trades = await tradeHistoryService.getTradeHistory(filters);
       
       if (trades.length > 0) {
         console.log(`\nHistorial de Operaciones (últimas ${Math.min(o.limit, trades.length)}):`);
@@ -707,5 +726,17 @@ cli
     }
   });
 
-// Analizar argumentos de línea de comandos
-cli.parse(process.argv);
+// Inicializar el sistema asincrónicamente primero
+(async () => {
+  try {
+    console.log('Inicializando midasTS...');
+    await initializeSystem();
+    console.log('Sistema inicializado correctamente. Ejecutando comando...');
+    
+    // Analizar argumentos de línea de comandos
+    cli.parse(process.argv);
+  } catch (error) {
+    console.error('Error al inicializar el sistema:', error);
+    process.exit(1);
+  }
+})();
