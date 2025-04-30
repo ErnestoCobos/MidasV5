@@ -17,21 +17,29 @@ const market_data_1 = require("../services/market-data");
 const correlation_1 = require("../services/correlation");
 // Estrategia especializada para micro-capital (<$100)
 class MicroCapitalStrategy {
-    constructor() {
+    constructor(config = {}) {
         this.name = "Micro-Scalping Conservador";
         this.description = "Estrategia ultra-conservadora para capital <$100. Prioriza preservación y oportunidades de alta probabilidad.";
         this.minCapital = 10;
         this.maxCapital = 100;
-        logging_1.logger.info('MicroCapitalStrategy initialized');
+        this.config = {
+            ignoreMarketConditions: config.ignoreMarketConditions || false,
+            minConfidence: config.minConfidence || 0.85,
+            allowBearishOperations: config.allowBearishOperations || false
+        };
+        logging_1.logger.info(Object.assign({}, this.config), 'MicroCapitalStrategy initialized with config');
     }
     /**
      * Ejecuta la estrategia micro-capital
      * @param symbol Par de trading (ej. BTCUSDT)
      * @param capital Capital total disponible
+     * @param options Opciones adicionales para esta ejecución
      * @returns Señal de trading recomendada
      */
-    execute(symbol, capital) {
+    execute(symbol, capital, options) {
         return __awaiter(this, void 0, void 0, function* () {
+            // Combinar configuración del constructor con opciones en tiempo de ejecución
+            const config = Object.assign(Object.assign({}, this.config), (options || {}));
             try {
                 // 1. Verificar sentimiento primero (ahorra llamadas API a DeepSeek si no es favorable)
                 const asset = symbol.replace('USDT', '');
@@ -48,9 +56,12 @@ class MicroCapitalStrategy {
                 // 2. Obtener datos de mercado mejorados
                 const md = yield market_data_1.marketDataService.getEnhancedMarketData(symbol);
                 md.sentiment = sentiment.score;
-                // 3. Verificar condiciones generales del mercado
-                if (!(yield this.checkMarketConditions(symbol))) {
-                    logging_1.logger.info({ symbol }, 'Skipping due to unfavorable market conditions');
+                // 3. Verificar condiciones generales del mercado (si no estamos ignorándolas)
+                if (!config.ignoreMarketConditions && !(yield this.checkMarketConditions(symbol, config))) {
+                    logging_1.logger.info({
+                        symbol,
+                        ignoreMarketConditions: config.ignoreMarketConditions
+                    }, 'Skipping due to unfavorable market conditions');
                     return { action: 'HOLD', confidence: 0.0 };
                 }
                 // 4. Realizar verificación técnica básica
@@ -59,25 +70,27 @@ class MicroCapitalStrategy {
                 }
                 // 5. Consultar a DeepSeek con el prompt optimizado para micro-capital
                 const signal = yield deepseek_1.deepSeekService.decide(md, capital, 'micro');
-                // 5. Validación adicional de la señal
-                if (signal.action !== 'HOLD' && (!signal.confidence || signal.confidence < 0.85)) {
+                // 5. Validación adicional de la señal con el umbral configurable
+                const minConfidence = config.minConfidence || 0.70;
+                if (signal.action !== 'HOLD' && (!signal.confidence || signal.confidence < minConfidence)) {
                     logging_1.logger.info({
                         symbol,
-                        confidence: signal.confidence
+                        confidence: signal.confidence,
+                        requiredConfidence: minConfidence
                     }, 'Insufficient confidence for micro-capital');
                     return { action: 'HOLD', confidence: 0.0 };
                 }
                 // 6. Verificar que el tamaño de posición sea adecuado
                 if (signal.action !== 'HOLD' && signal.position_size) {
-                    // Si la posición es < $5 USD, no es viable en la mayoría de exchanges
-                    if (signal.position_size < 5) {
+                    // Si la posición es < $3 USD, no es viable en la mayoría de exchanges
+                    if (signal.position_size < 3) {
                         logging_1.logger.info({
                             positionSize: signal.position_size
                         }, 'Position size too small for viable trading');
                         return { action: 'HOLD', confidence: 0.0 };
                     }
-                    // Limitar el tamaño máximo de posición a 20% del capital
-                    const maxPosition = capital * 0.2;
+                    // Limitar el tamaño máximo de posición a 30% del capital
+                    const maxPosition = capital * 0.3;
                     if (signal.position_size > maxPosition) {
                         signal.position_size = maxPosition;
                         logging_1.logger.info({
@@ -113,16 +126,21 @@ class MicroCapitalStrategy {
     /**
      * Verifica si las condiciones generales del mercado son favorables
      * @param symbol Par de trading
+     * @param config Configuración de la estrategia
      * @returns true si las condiciones son favorables
      */
-    checkMarketConditions(symbol) {
+    checkMarketConditions(symbol, config) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                // Si se permite operar en mercado bajista, adaptamos la acción según la estrategia
+                const action = (config === null || config === void 0 ? void 0 : config.allowBearishOperations) ? 'SELL' : 'BUY';
                 // Verificar correlaciones y tendencias del mercado
-                const isFavorable = yield correlation_1.correlationService.isFavorableMarketCondition(symbol, 'BUY');
+                const isFavorable = yield correlation_1.correlationService.isFavorableMarketCondition(symbol, action);
                 if (!isFavorable) {
                     logging_1.logger.info({
-                        symbol
+                        symbol,
+                        action,
+                        allowBearishOperations: config === null || config === void 0 ? void 0 : config.allowBearishOperations
                     }, 'Market conditions not favorable for trading');
                 }
                 return isFavorable;
@@ -155,19 +173,20 @@ class MicroCapitalStrategy {
                 }, 'Skipping due to overbought RSI');
                 return true;
             }
-            // Si el volumen es muy bajo comparado con el promedio
-            if (tech.volume_ratio && tech.volume_ratio < 0.7) {
+            // Si el volumen es extremadamente bajo comparado con el promedio
+            if (tech.volume_ratio && tech.volume_ratio < 0.5) {
                 logging_1.logger.info({
                     symbol,
                     volumeRatio: (_b = tech.volume_ratio) === null || _b === void 0 ? void 0 : _b.toFixed(2)
                 }, 'Skipping due to low volume ratio');
                 return true;
             }
+            // Comentado para permitir más operaciones
             // Si no hay soportes identificables (indica poca estructura de mercado)
-            if (!tech.supports || tech.supports.length === 0) {
-                logging_1.logger.info({ symbol }, 'Skipping due to no identifiable support levels');
-                return true;
-            }
+            // if (!tech.supports || tech.supports.length === 0) {
+            //   logger.info({ symbol }, 'Skipping due to no identifiable support levels');
+            //   return true;
+            // }
             // No hay razones técnicas para saltar
             return false;
         });
@@ -184,30 +203,30 @@ class MicroCapitalStrategy {
         }
         // Asegurarse de que hay stop loss
         if (!signal.stopLoss && signal.action === 'BUY') {
-            // Stop loss máximo: 1.2% para compras
-            signal.stopLoss = signal.entry * 0.988; // 1.2% por debajo
+            // Stop loss máximo: 1.5% para compras (ajustado desde 1.2%)
+            signal.stopLoss = signal.entry * 0.985; // 1.5% por debajo
             logging_1.logger.info({
                 stopLoss: signal.stopLoss
             }, 'Stop loss added automatically');
         }
         else if (!signal.stopLoss && signal.action === 'SELL') {
-            // Stop loss para ventas: 1.2% por encima
-            signal.stopLoss = signal.entry * 1.012;
+            // Stop loss para ventas: 1.5% por encima (ajustado desde 1.2%)
+            signal.stopLoss = signal.entry * 1.015;
             logging_1.logger.info({
                 stopLoss: signal.stopLoss
             }, 'Stop loss added automatically');
         }
         // Asegurarse de que hay take profit
         if (!signal.takeProfit && signal.action === 'BUY') {
-            // Take profit mínimo: 1.5% para compras
-            signal.takeProfit = signal.entry * 1.015;
+            // Take profit mínimo: 2.0% para compras (ajustado desde 1.5%)
+            signal.takeProfit = signal.entry * 1.020;
             logging_1.logger.info({
                 takeProfit: signal.takeProfit
             }, 'Take profit added automatically');
         }
         else if (!signal.takeProfit && signal.action === 'SELL') {
-            // Take profit para ventas: 1.5% por debajo
-            signal.takeProfit = signal.entry * 0.985;
+            // Take profit para ventas: 2.0% por debajo (ajustado desde 1.5%)
+            signal.takeProfit = signal.entry * 0.980;
             logging_1.logger.info({
                 takeProfit: signal.takeProfit
             }, 'Take profit added automatically');

@@ -32,7 +32,7 @@ const p_queue_1 = __importDefault(require("p-queue"));
 // Estrategia Factory 
 // -----------------------------------------------------------------------------
 class StrategyFactory {
-    static createStrategy(type, capital) {
+    static createStrategy(type, capital, config) {
         // Si el tipo es 'auto', seleccionar estrategia basada en tamaño de capital
         if (type === 'auto') {
             if (capital < 100) {
@@ -52,12 +52,18 @@ class StrategyFactory {
         // Crear la estrategia específica
         switch (type) {
             case 'micro':
+                // Si hay configuración personalizada, crear nueva instancia con esta configuración
+                if (config) {
+                    const { MicroCapitalStrategy } = require('./strategies/micro-capital');
+                    return new MicroCapitalStrategy(config);
+                }
+                // De lo contrario, usar la instancia global
                 return micro_capital_1.microCapitalStrategy;
             // Podrías añadir más estrategias según sea necesario
             default:
                 // Fallback a estrategia micro para iniciar
                 logging_1.logger.warn({ requestedStrategy: type }, 'Estrategia solicitada no disponible, usando micro');
-                return micro_capital_1.microCapitalStrategy;
+                return config ? new (require('./strategies/micro-capital').MicroCapitalStrategy)(config) : micro_capital_1.microCapitalStrategy;
         }
     }
 }
@@ -146,8 +152,14 @@ function runMicroTrading(opts) {
             }, 'Tamaño de posición ajustado automáticamente a 50% del capital');
             opts.position = opts.capital * 0.5;
         }
+        // Configurar la estrategia con los nuevos parámetros
+        const strategyConfig = {
+            minConfidence: opts.minConfidence,
+            ignoreMarketConditions: opts.ignoreMarketConditions,
+            allowBearishOperations: opts.allowBearish
+        };
         // Crear la estrategia
-        const strategy = StrategyFactory.createStrategy(opts.strategy, opts.capital);
+        const strategy = StrategyFactory.createStrategy(opts.strategy, opts.capital, strategyConfig);
         logging_1.logger.info({
             symbol: opts.symbol,
             capital: opts.capital,
@@ -255,6 +267,9 @@ cli
     .option('-i, --interval <seconds>', 'Intervalo en segundos', (v) => Number(v), 180)
     .option('-l, --max-stop-loss <percent>', 'Máximo stop loss permitido', (v) => Number(v), 1.5)
     .option('-t, --take-profit <percent>', 'Objetivo de beneficio', (v) => Number(v), 1.2)
+    .option('-f, --min-confidence <num>', 'Confianza mínima para operar (0-1)', (v) => Number(v), 0.85)
+    .option('--ignore-market-conditions', 'Ignorar condiciones de mercado desfavorables')
+    .option('--allow-bearish', 'Permitir operaciones en mercado bajista')
     .option('--dry-run', 'Simulación sin ejecución real')
     .action((o) => runMicroTrading({
     symbol: o.symbol,
@@ -264,6 +279,9 @@ cli
     interval: o.interval,
     maxStopLoss: o.maxStopLoss,
     takeProfit: o.takeProfit,
+    minConfidence: o.minConfidence,
+    ignoreMarketConditions: o.ignoreMarketConditions,
+    allowBearish: o.allowBearish,
     dryRun: !!o.dryRun
 }));
 // Comando para diagnosticar conexiones API
