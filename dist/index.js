@@ -19,6 +19,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+// Inicializar todos los componentes del sistema
+const init_1 = require("./utils/init");
+(0, init_1.initializeSystem)();
 const commander_1 = require("commander");
 const logging_1 = require("./utils/logging");
 const lunarcrush_1 = require("./services/lunarcrush");

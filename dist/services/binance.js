@@ -18,6 +18,8 @@ const logging_1 = require("../utils/logging");
 const env_1 = require("../utils/env");
 const p_queue_1 = __importDefault(require("p-queue"));
 const node_cache_1 = __importDefault(require("node-cache"));
+const circuit_breaker_1 = require("../utils/circuit-breaker");
+const error_tracking_1 = require("../utils/error-tracking");
 // Clase principal para interactuar con Binance (REST API)
 class BinanceService {
     constructor(config) {
@@ -229,67 +231,84 @@ class BinanceService {
      */
     getTicker24H(symbol) {
         return __awaiter(this, void 0, void 0, function* () {
+            // Verificar caché primero para evitar llamadas innecesarias
+            const cacheKey = `ticker24h_${symbol}`;
+            const cachedData = this.cache.get(cacheKey);
+            if (cachedData) {
+                return cachedData;
+            }
+            // Obtener circuit breaker para Binance
+            const breaker = circuit_breaker_1.CircuitBreakerRegistry.getOrCreate('binance', {
+                failureThreshold: 3,
+                resetTimeout: 30000,
+                halfOpenSuccessThreshold: 2,
+                timeout: 15000
+            });
             try {
-                // Intentar obtener de caché primero
-                const cacheKey = `ticker24h_${symbol}`;
-                const cachedData = this.cache.get(cacheKey);
-                if (cachedData) {
-                    return cachedData;
-                }
-                // Si no está en caché, obtener datos frescos usando fetch directamente
-                // en lugar de this.rest.ticker24hr que está devolviendo una función
-                try {
-                    // Construir URL para la API de Binance
-                    const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
-                    const response = yield fetch(url, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json'
+                // Usar el circuit breaker para la operación
+                return yield breaker.execute(() => __awaiter(this, void 0, void 0, function* () {
+                    // Usar tracking de errores con reintentos
+                    return yield (0, error_tracking_1.withErrorTracking)(() => __awaiter(this, void 0, void 0, function* () {
+                        // Si no está en caché, obtener datos frescos usando fetch
+                        try {
+                            // Construir URL para la API de Binance
+                            const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
+                            const response = yield fetch(url, {
+                                method: 'GET',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json'
+                                }
+                            });
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! Status: ${response.status}`);
+                            }
+                            const data = yield response.json();
+                            // Guardar en caché (corta duración)
+                            this.cache.set(cacheKey, data, 10); // 10 segundos TTL
+                            return data;
                         }
-                    });
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! Status: ${response.status}`);
-                    }
-                    const data = yield response.json();
-                    // Guardar en caché (corta duración)
-                    this.cache.set(cacheKey, data, 10); // 10 segundos TTL
-                    return data;
-                }
-                catch (fetchError) {
-                    logging_1.logger.error({
-                        symbol,
-                        errorType: 'fetchError',
-                        message: fetchError.message
-                    }, 'Error fetching 24h ticker with fetch');
-                    // Intentar con el método original como fallback
-                    try {
-                        const response = yield this.queue.add(() => this.rest.ticker24hr({ symbol }));
-                        // Si la respuesta es una función, esto podría ser el problema
-                        if (typeof response.data === 'function') {
+                        catch (fetchError) {
                             logging_1.logger.error({
                                 symbol,
-                                responseType: typeof response.data
-                            }, 'Binance API returned function instead of data');
-                            // Simular datos de ticker para no romper la aplicación
-                            return this.simulateTickerData(symbol);
+                                errorType: 'fetchError',
+                                message: fetchError.message
+                            }, 'Error fetching 24h ticker with fetch');
+                            // Intentar con el método original como fallback
+                            const response = yield this.queue.add(() => this.rest.ticker24hr({ symbol }));
+                            // Si la respuesta es una función, esto podría ser el problema
+                            if (typeof response.data === 'function') {
+                                throw new Error('Binance API returned function instead of data');
+                            }
+                            // Guardar en caché
+                            this.cache.set(cacheKey, response.data, 10);
+                            return response.data;
                         }
-                        // Guardar en caché si no es una función
-                        this.cache.set(cacheKey, response.data, 10);
-                        return response.data;
-                    }
-                    catch (originalError) {
-                        logging_1.logger.error({
-                            symbol,
-                            errorType: 'originalMethodError',
-                            message: originalError.message
-                        }, 'Both fetch and original method failed for ticker');
-                        return this.simulateTickerData(symbol);
-                    }
-                }
+                    }), {
+                        name: 'binance.getTicker24H',
+                        tags: { symbol },
+                        data: { service: 'binance' }
+                    }, {
+                        maxRetries: 2,
+                        baseDelayMs: 1000,
+                        shouldRetry: (error) => {
+                            // Filtrar errores que deberían reintentarse
+                            return error.message.includes('timeout') ||
+                                error.message.includes('rate limit') ||
+                                error.message.includes('network error') ||
+                                error.message.includes('5') || // Errores 5xx
+                                error.message.includes('429'); // Too Many Requests
+                        }
+                    });
+                }), `getTicker24H(${symbol})`);
             }
             catch (error) {
-                logging_1.logger.error({ symbol, error: error.message }, 'Error fetching 24h ticker');
+                logging_1.logger.error({
+                    symbol,
+                    error: error.message,
+                    circuitState: breaker.getState()
+                }, 'Error fetching 24h ticker');
+                // Si el circuito está abierto o hay cualquier otro error, usar datos simulados
                 return this.simulateTickerData(symbol);
             }
         });

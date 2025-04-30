@@ -14,7 +14,10 @@ const envSchema = zod_1.z.object({
     // Variables opcionales con valores por defecto
     NODE_ENV: zod_1.z.enum(['development', 'production', 'test']).default('development'),
     LOG_LEVEL: zod_1.z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-    DRY_RUN: zod_1.z.enum(['true', 'false']).default('true').transform(val => val === 'true')
+    DRY_RUN: zod_1.z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
+    // Variables para monitoreo y seguimiento de errores
+    SENTRY_DSN: zod_1.z.string().optional().default(''),
+    SENTRY_ENVIRONMENT: zod_1.z.string().optional().default('development')
 });
 // Función para validar y extraer variables de entorno
 function validateEnv() {
