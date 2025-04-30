@@ -24,22 +24,43 @@ export interface MicroStrategyConfig {
 
 // Estrategia especializada para micro-capital (<$100)
 export class MicroCapitalStrategy implements Strategy {
-  name = "Micro-Scalping Conservador";
-  description = "Estrategia ultra-conservadora para capital <$100. Prioriza preservación y oportunidades de alta probabilidad.";
+  name = "Micro-Capital Growth Accelerator";
+  description = "Estrategia optimizada para crecimiento de capital <$100. Enfoque balanceado entre rentabilidad y preservación.";
   minCapital = 10;
   maxCapital = 100;
   
+  // Modos de operación
+  static MODE_CONSERVATIVE = 'conservative';
+  static MODE_GROWTH = 'growth';
+  
   // Configuración de la estrategia
   private config: MicroStrategyConfig;
+  private mode: string;
   
-  constructor(config: MicroStrategyConfig = {}) {
-    this.config = {
-      ignoreMarketConditions: config.ignoreMarketConditions || false,
-      minConfidence: config.minConfidence || 0.85,
-      allowBearishOperations: config.allowBearishOperations || false
-    };
+  constructor(config: MicroStrategyConfig = {}, mode: string = MicroCapitalStrategy.MODE_CONSERVATIVE) {
+    this.mode = mode;
+    
+    // Ajustar la configuración según el modo
+    if (mode === MicroCapitalStrategy.MODE_GROWTH) {
+      this.name = "Micro-Growth Accelerator";
+      this.description = "Estrategia agresiva para maximizar crecimiento de capital. Prioriza retornos sobre preservación.";
+      
+      this.config = {
+        ignoreMarketConditions: config.ignoreMarketConditions || true,  // Más permisivo con condiciones de mercado
+        minConfidence: config.minConfidence || 0.80,  // Umbral de confianza más bajo
+        allowBearishOperations: config.allowBearishOperations || true   // Permitir operaciones en mercado bajista
+      };
+    } else {
+      // Configuración conservadora por defecto
+      this.config = {
+        ignoreMarketConditions: config.ignoreMarketConditions || false,
+        minConfidence: config.minConfidence || 0.85,
+        allowBearishOperations: config.allowBearishOperations || false
+      };
+    }
     
     logger.info({
+      mode: this.mode,
       ...this.config
     }, 'MicroCapitalStrategy initialized with config');
   }
@@ -57,20 +78,37 @@ export class MicroCapitalStrategy implements Strategy {
       ...this.config,
       ...(options || {})
     };
+    
+    // Determinar el tipo de estrategia a usar con DeepSeek
+    const strategyType = this.mode === MicroCapitalStrategy.MODE_GROWTH ? 'growth' : 'micro';
     try {
       // 1. Verificar sentimiento primero (ahorra llamadas API a DeepSeek si no es favorable)
       const asset = symbol.replace('USDT', '');
       const sentiment = await lunarCrushService.getMicroTradingSignal(asset);
       
-      // Solo procesar si hay sentimiento positivo o neutral
-      if (sentiment.signal === 'SELL' || sentiment.signal === 'STRONG_SELL') {
-        logger.info({ 
-          asset, 
-          galaxyScore: sentiment.score, 
-          threshold: sentiment.threshold 
-        }, 'Skipping due to negative sentiment');
-        
-        return { action: 'HOLD', confidence: 0.0 };
+      // En modo crecimiento, ser más permisivo con sentimiento negativo
+      // Solo saltar en caso de sentimiento extremadamente negativo
+      if (this.mode === MicroCapitalStrategy.MODE_GROWTH) {
+        if (sentiment.signal === 'STRONG_SELL' && sentiment.score < 40) {
+          logger.info({ 
+            asset, 
+            galaxyScore: sentiment.score, 
+            threshold: sentiment.threshold 
+          }, 'Skipping due to extremely negative sentiment');
+          
+          return { action: 'HOLD', confidence: 0.0 };
+        }
+      } else {
+        // Modo conservador: saltar con cualquier sentimiento negativo
+        if (sentiment.signal === 'SELL' || sentiment.signal === 'STRONG_SELL') {
+          logger.info({ 
+            asset, 
+            galaxyScore: sentiment.score, 
+            threshold: sentiment.threshold 
+          }, 'Skipping due to negative sentiment');
+          
+          return { action: 'HOLD', confidence: 0.0 };
+        }
       }
       
       // 2. Obtener datos de mercado mejorados
@@ -91,8 +129,8 @@ export class MicroCapitalStrategy implements Strategy {
       return { action: 'HOLD', confidence: 0.0 };
     }
     
-    // 5. Consultar a DeepSeek con el prompt optimizado para micro-capital
-      const signal = await deepSeekService.decide(md, capital, 'micro');
+    // 5. Consultar a DeepSeek con el prompt optimizado para la estrategia seleccionada
+      const signal = await deepSeekService.decide(md, capital, strategyType);
       
       // 5. Validación adicional de la señal con el umbral configurable
       const minConfidence = config.minConfidence || 0.70;
@@ -117,8 +155,10 @@ export class MicroCapitalStrategy implements Strategy {
           return { action: 'HOLD', confidence: 0.0 };
         }
         
-        // Limitar el tamaño máximo de posición a 30% del capital
-        const maxPosition = capital * 0.3;
+        // Limitar el tamaño máximo de posición según el modo
+        // Modo crecimiento: hasta 40% del capital para mayor exposición
+        // Modo conservador: hasta 30% del capital para mayor diversificación
+        const maxPosition = capital * (this.mode === MicroCapitalStrategy.MODE_GROWTH ? 0.4 : 0.3);
         if (signal.position_size > maxPosition) {
           signal.position_size = maxPosition;
           logger.info({ 
@@ -195,26 +235,51 @@ export class MicroCapitalStrategy implements Strategy {
     const tech = md.technicals;
     if (!tech) return false;
     
-    // Criterios de filtrado técnico para micro-capital
-    
-    // Si RSI está en extremos, saltar (excepto si es muy sobreventa)
-    if (tech.rsi && tech.rsi > 80) {
-      logger.info({ 
-        symbol, 
-        rsi: tech.rsi?.toFixed(2) 
-      }, 'Skipping due to overbought RSI');
+    // Criterios de filtrado técnico según el modo
+    if (this.mode === MicroCapitalStrategy.MODE_GROWTH) {
+      // Modo crecimiento: criterios más permisivos
       
-      return true;
-    }
-    
-    // Si el volumen es extremadamente bajo comparado con el promedio
-    if (tech.volume_ratio && tech.volume_ratio < 0.5) {
-      logger.info({ 
-        symbol, 
-        volumeRatio: tech.volume_ratio?.toFixed(2) 
-      }, 'Skipping due to low volume ratio');
+      // Incluso en modo crecimiento, evitar extremos de RSI
+      if (tech.rsi && tech.rsi > 85) {
+        logger.info({ 
+          symbol, 
+          rsi: tech.rsi?.toFixed(2) 
+        }, 'Skipping due to extremely overbought RSI');
+        
+        return true;
+      }
       
-      return true;
+      // Ser más permisivo con el volumen en modo crecimiento
+      if (tech.volume_ratio && tech.volume_ratio < 0.4) {
+        logger.info({ 
+          symbol, 
+          volumeRatio: tech.volume_ratio?.toFixed(2) 
+        }, 'Skipping due to extremely low volume ratio');
+        
+        return true;
+      }
+    } else {
+      // Modo conservador: criterios más estrictos
+      
+      // Si RSI está en extremos, saltar
+      if (tech.rsi && tech.rsi > 80) {
+        logger.info({ 
+          symbol, 
+          rsi: tech.rsi?.toFixed(2) 
+        }, 'Skipping due to overbought RSI');
+        
+        return true;
+      }
+      
+      // Si el volumen es bajo comparado con el promedio
+      if (tech.volume_ratio && tech.volume_ratio < 0.5) {
+        logger.info({ 
+          symbol, 
+          volumeRatio: tech.volume_ratio?.toFixed(2) 
+        }, 'Skipping due to low volume ratio');
+        
+        return true;
+      }
     }
     
     // Comentado para permitir más operaciones
@@ -254,16 +319,37 @@ export class MicroCapitalStrategy implements Strategy {
       }, 'Stop loss added automatically');
     }
     
-    // Asegurarse de que hay take profit
+    // Configurar take profit según el modo y escalonarlo para maximizar ganancias
     if (!signal.takeProfit && signal.action === 'BUY') {
-      // Take profit mínimo: 2.0% para compras (ajustado desde 1.5%)
-      signal.takeProfit = signal.entry * 1.020;
-      logger.info({
-        takeProfit: signal.takeProfit
-      }, 'Take profit added automatically');
+      if (this.mode === MicroCapitalStrategy.MODE_GROWTH) {
+        // Modo crecimiento: take profit más agresivo (2.5-3.0%)
+        // Se implementará un sistema de take profit escalonado en front-end
+        const takeProfit = signal.entry * 1.025; // 2.5% base para modo crecimiento
+        signal.takeProfit = takeProfit;
+        
+        // Agregar información sobre escalonamiento en el reasoning
+        if (signal.reasoning) {
+          signal.reasoning += ` Recomendación: considerar toma de beneficios escalonada a 1.5%, 2.5% y 3.5%.`;
+        }
+        
+        logger.info({
+          takeProfit: signal.takeProfit,
+          mode: 'growth'
+        }, 'Aggressive take profit added automatically');
+      } else {
+        // Modo conservador: take profit estándar (2.0%)
+        signal.takeProfit = signal.entry * 1.020;
+        logger.info({
+          takeProfit: signal.takeProfit
+        }, 'Take profit added automatically');
+      }
     } else if (!signal.takeProfit && signal.action === 'SELL') {
-      // Take profit para ventas: 2.0% por debajo (ajustado desde 1.5%)
-      signal.takeProfit = signal.entry * 0.980;
+      // Similar para ventas
+      if (this.mode === MicroCapitalStrategy.MODE_GROWTH) {
+        signal.takeProfit = signal.entry * 0.975; // -2.5% para ventas
+      } else {
+        signal.takeProfit = signal.entry * 0.980; // -2.0% para ventas
+      }
       logger.info({
         takeProfit: signal.takeProfit
       }, 'Take profit added automatically');
@@ -278,20 +364,32 @@ export class MicroCapitalStrategy implements Strategy {
       }
       
       // Si no hay un trailing stop definido, calcularlo basado en la volatilidad
-      // y el riesgo aceptable
+      // y el riesgo aceptable, ajustando según el modo
       if (signal.useTrailingStop && !signal.trailingStopPercent) {
-        // Distancia más pequeña para micro-capital (más conservador)
-        // Mínimo 0.8%, máximo 2.5%
-        const trailingDistance = Math.max(0.8, Math.min(2.5, 
-          // Fórmula: a mayor confianza, mayor distancia (permite más espacio para beneficios)
-          1.0 + (signal.confidence - 0.85) * 5
-        ));
+        let trailingDistance;
+        
+        if (this.mode === MicroCapitalStrategy.MODE_GROWTH) {
+          // Modo crecimiento: trailing stop más ajustado para capturar más movimiento
+          // Mínimo 0.7%, máximo 2.5%
+          trailingDistance = Math.max(0.7, Math.min(2.5, 
+            // Fórmula optimizada para crecimiento
+            0.9 + (signal.confidence - 0.8) * 5.5
+          ));
+        } else {
+          // Modo conservador: trailing stop más amplio para reducir falsas salidas
+          // Mínimo 0.8%, máximo 2.5%
+          trailingDistance = Math.max(0.8, Math.min(2.5, 
+            // Fórmula original
+            1.0 + (signal.confidence - 0.85) * 5
+          ));
+        }
         
         signal.trailingStopPercent = trailingDistance;
         
         logger.info({
           price: currentPrice,
           confidence: signal.confidence,
+          mode: this.mode,
           trailingDistance: trailingDistance.toFixed(2) + '%'
         }, 'Trailing stop calculated automatically');
       }
@@ -299,5 +397,6 @@ export class MicroCapitalStrategy implements Strategy {
   }
 }
 
-// Instancia global de la estrategia de micro-capital
+// Instancias globales de la estrategia
 export const microCapitalStrategy = new MicroCapitalStrategy();
+export const microGrowthStrategy = new MicroCapitalStrategy({}, MicroCapitalStrategy.MODE_GROWTH);

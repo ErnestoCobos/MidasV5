@@ -200,6 +200,8 @@ class DeepSeekService {
      */
     buildPrompt(md, capital, strategyType) {
         switch (strategyType) {
+            case 'growth':
+                return this.buildGrowthOptimizedPrompt(md, capital);
             case 'micro':
                 return this.buildMicroCapitalPrompt(md, capital);
             case 'large':
@@ -207,6 +209,64 @@ class DeepSeekService {
             default:
                 return this.buildMediumCapitalPrompt(md, capital);
         }
+    }
+    /**
+     * Prompt especializado para crecimiento de capital (<$200)
+     * Optimizado para maximizar crecimiento en lugar de preservación
+     */
+    buildGrowthOptimizedPrompt(md, capital) {
+        var _a, _b, _c, _d;
+        const tech = md.technicals || {};
+        return `
+Eres un experto en trading algorítmico de criptomonedas especializado en crecimiento acelerado de capital.
+
+CONTEXTO:
+- Capital total disponible: $${capital.toFixed(2)} USD (OBJETIVO: MAXIMIZAR CRECIMIENTO)
+- Datos de mercado para análisis:
+  - Precio actual: ${md.price}
+  - Volumen 24h: ${md.volume24h}
+  - Sentimiento social (Galaxy Score): ${md.sentiment}/100
+  - RSI(14): ${tech.rsi || 'N/A'}
+  - Tendencia EMA: ${tech.ema_cross || 'N/A'}
+  - Volumen actual vs promedio: ${((_a = tech.volume_ratio) === null || _a === void 0 ? void 0 : _a.toFixed(2)) || 'N/A'}
+  - Posición en Bollinger Bands: ${((_b = tech.bband_percent) === null || _b === void 0 ? void 0 : _b.toFixed(2)) || 'N/A'}
+  - Soportes cercanos: ${((_c = tech.supports) === null || _c === void 0 ? void 0 : _c.join(', ')) || 'N/A'}
+  - Resistencias cercanas: ${((_d = tech.resistances) === null || _d === void 0 ? void 0 : _d.join(', ')) || 'N/A'}
+
+INSTRUCCIONES (ENFOQUE EN CRECIMIENTO):
+1. Analiza oportunidades de alto potencial de retorno
+2. Busca configuraciones técnicas con asimetría positiva (mayor recompensa que riesgo)
+3. PRIORIZA OPORTUNIDADES DE ALTO RETORNO SOBRE PRESERVACIÓN (ser más agresivo)
+4. Identifica puntos de entrada óptimos donde exista momentum y soporte técnico
+5. Recomienda take profits escalonados y trailing stops para maximizar ganancias
+
+PARÁMETROS AJUSTADOS PARA CRECIMIENTO:
+- Take Profit: Entre 2.0% y 4.5% (puedes sugerir escalonamiento)
+- Stop Loss: Entre 1.2% y 1.8% (según volatilidad)
+- Ratio R/R objetivo: Mínimo 1:2
+- Confianza mínima aceptable: 0.8 (más permisivo que el estándar 0.85)
+- Tamaño de posición: Hasta 40% del capital en operaciones de alta confianza
+
+FASES DE CRECIMIENTO:
+1. FASE INICIAL (${capital < 100 ? 'ACTUAL - ' : ''}54-100 USD):
+   - Prioriza oportunidades con potencial de retorno >2.0%
+   - Activos preferidos: Alta volatilidad con soporte técnico claro
+   - Take profits escalonados
+
+2. META SIGUIENTE (${capital >= 100 && capital < 200 ? 'ACTUAL - ' : ''}100-200 USD):
+   - Mayor diversificación
+   - Mayor uso de trailing stops
+
+Devuelve un objeto JSON con:
+- action: "BUY", "SELL" o "HOLD"
+- confidence: nivel de confianza (0.0 a 1.0)
+- entry: precio recomendado de entrada
+- stopLoss: nivel de stop loss
+- takeProfit: nivel principal de take profit
+- position_size: tamaño óptimo de posición según potencial de retorno
+- useTrailingStop: true/false (recomendado true para crecimiento)
+- trailingStopPercent: porcentaje para trailing stop (1.0-2.5%)
+- reasoning: explicación del análisis y expectativa de retorno`;
     }
     /**
      * Prompt especializado para micro-capital (<$100)

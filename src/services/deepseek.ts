@@ -96,7 +96,7 @@ export class DeepSeekService {
   async decide(
     md: MarketData, 
     capital: number = 1000, 
-    strategyType: 'micro' | 'medium' | 'large' = 'medium'
+    strategyType: 'micro' | 'medium' | 'large' | 'growth' = 'medium'
   ): Promise<TradeSignal> {
     // Construir el prompt adecuado basado en el tipo de estrategia
     const prompt = this.buildPrompt(md, capital, strategyType);
@@ -235,8 +235,10 @@ export class DeepSeekService {
   /**
    * Construye un prompt adecuado según el tipo de estrategia
    */
-  private buildPrompt(md: MarketData, capital: number, strategyType: 'micro' | 'medium' | 'large'): string {
+  private buildPrompt(md: MarketData, capital: number, strategyType: 'micro' | 'medium' | 'large' | 'growth'): string {
     switch (strategyType) {
+      case 'growth':
+        return this.buildGrowthOptimizedPrompt(md, capital);
       case 'micro':
         return this.buildMicroCapitalPrompt(md, capital);
       case 'large':
@@ -244,6 +246,65 @@ export class DeepSeekService {
       default:
         return this.buildMediumCapitalPrompt(md, capital);
     }
+  }
+  
+  /**
+   * Prompt especializado para crecimiento de capital (<$200)
+   * Optimizado para maximizar crecimiento en lugar de preservación
+   */
+  private buildGrowthOptimizedPrompt(md: MarketData, capital: number): string {
+    const tech = md.technicals || {};
+    
+    return `
+Eres un experto en trading algorítmico de criptomonedas especializado en crecimiento acelerado de capital.
+
+CONTEXTO:
+- Capital total disponible: $${capital.toFixed(2)} USD (OBJETIVO: MAXIMIZAR CRECIMIENTO)
+- Datos de mercado para análisis:
+  - Precio actual: ${md.price}
+  - Volumen 24h: ${md.volume24h}
+  - Sentimiento social (Galaxy Score): ${md.sentiment}/100
+  - RSI(14): ${tech.rsi || 'N/A'}
+  - Tendencia EMA: ${tech.ema_cross || 'N/A'}
+  - Volumen actual vs promedio: ${tech.volume_ratio?.toFixed(2) || 'N/A'}
+  - Posición en Bollinger Bands: ${tech.bband_percent?.toFixed(2) || 'N/A'}
+  - Soportes cercanos: ${tech.supports?.join(', ') || 'N/A'}
+  - Resistencias cercanas: ${tech.resistances?.join(', ') || 'N/A'}
+
+INSTRUCCIONES (ENFOQUE EN CRECIMIENTO):
+1. Analiza oportunidades de alto potencial de retorno
+2. Busca configuraciones técnicas con asimetría positiva (mayor recompensa que riesgo)
+3. PRIORIZA OPORTUNIDADES DE ALTO RETORNO SOBRE PRESERVACIÓN (ser más agresivo)
+4. Identifica puntos de entrada óptimos donde exista momentum y soporte técnico
+5. Recomienda take profits escalonados y trailing stops para maximizar ganancias
+
+PARÁMETROS AJUSTADOS PARA CRECIMIENTO:
+- Take Profit: Entre 2.0% y 4.5% (puedes sugerir escalonamiento)
+- Stop Loss: Entre 1.2% y 1.8% (según volatilidad)
+- Ratio R/R objetivo: Mínimo 1:2
+- Confianza mínima aceptable: 0.8 (más permisivo que el estándar 0.85)
+- Tamaño de posición: Hasta 40% del capital en operaciones de alta confianza
+
+FASES DE CRECIMIENTO:
+1. FASE INICIAL (${capital < 100 ? 'ACTUAL - ' : ''}54-100 USD):
+   - Prioriza oportunidades con potencial de retorno >2.0%
+   - Activos preferidos: Alta volatilidad con soporte técnico claro
+   - Take profits escalonados
+
+2. META SIGUIENTE (${capital >= 100 && capital < 200 ? 'ACTUAL - ' : ''}100-200 USD):
+   - Mayor diversificación
+   - Mayor uso de trailing stops
+
+Devuelve un objeto JSON con:
+- action: "BUY", "SELL" o "HOLD"
+- confidence: nivel de confianza (0.0 a 1.0)
+- entry: precio recomendado de entrada
+- stopLoss: nivel de stop loss
+- takeProfit: nivel principal de take profit
+- position_size: tamaño óptimo de posición según potencial de retorno
+- useTrailingStop: true/false (recomendado true para crecimiento)
+- trailingStopPercent: porcentaje para trailing stop (1.0-2.5%)
+- reasoning: explicación del análisis y expectativa de retorno`;
   }
   
   /**

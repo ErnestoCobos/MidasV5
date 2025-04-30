@@ -8,177 +8,200 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.marketDataService = exports.MarketDataService = void 0;
-const logging_1 = require("../utils/logging");
 const binance_1 = require("./binance");
 const indicators_1 = require("../utils/indicators");
-// Servicio para obtener y procesar datos de mercado
+const lunarcrush_1 = require("./lunarcrush");
+const logging_1 = require("../utils/logging");
+const node_cache_1 = __importDefault(require("node-cache"));
+/**
+ * Servicio para obtener y combinar datos de mercado de diferentes fuentes
+ * Proporciona información técnica y de sentimiento enriquecida
+ */
 class MarketDataService {
     constructor() {
-        this.candles = new Map(); // Caché de velas por par
+        // Caché para datos de mercado (30 minutos TTL)
+        this.cache = new node_cache_1.default({ stdTTL: 30 * 60 });
         logging_1.logger.info('Market data service initialized');
     }
     /**
-     * Obtiene datos de mercado mejorados, incluyendo análisis técnico
-     * @param symbol El par de trading (e.g. 'BTCUSDT')
-     * @param interval El intervalo para datos históricos (e.g. '5m')
-     * @returns Datos de mercado completos
+     * Obtiene datos de mercado enriquecidos con indicadores técnicos y sentimiento
+     * @param symbol Par de trading (e.g. 'BTCUSDT')
+     * @returns Datos mejorados con indicadores y valores técnicos
      */
-    getEnhancedMarketData(symbol_1) {
-        return __awaiter(this, arguments, void 0, function* (symbol, interval = '5m') {
+    getEnhancedMarketData(symbol) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Clave única para este símbolo
+            const cacheKey = `emd_${symbol}`;
+            // Verificar caché
+            const cached = this.cache.get(cacheKey);
+            if (cached) {
+                logging_1.logger.debug({ symbol }, 'Using cached market data');
+                return cached;
+            }
             try {
-                // 1. Obtener datos de precio actual (ticker)
+                logging_1.logger.info({ symbol }, 'Getting enhanced market data');
+                // 1. Obtener datos básicos de precio
                 const ticker = yield binance_1.binanceService.getTicker24H(symbol);
-                if (!ticker) {
-                    throw new Error(`No se pudieron obtener datos del ticker para ${symbol}`);
+                const price = parseFloat(ticker.lastPrice);
+                const volume24h = parseFloat(ticker.volume);
+                // 2. Obtener velas para cálculos técnicos
+                const candles = yield binance_1.binanceService.getHistoricalCandles(symbol, '15m', 96);
+                // 3. Calcular indicadores técnicos
+                const technicals = {};
+                // Solo calcular si hay suficientes datos
+                if (candles.length >= 14) {
+                    technicals.rsi = indicators_1.TechnicalIndicators.calculateRSI(candles);
+                    technicals.ema_cross = indicators_1.TechnicalIndicators.calculateEMACross(candles);
+                    technicals.volume_ratio = indicators_1.TechnicalIndicators.calculateVolumeRatio(candles);
+                    // Bollinger Bands
+                    const bbands = indicators_1.TechnicalIndicators.calculateBollingerBands(candles);
+                    technicals.bband_percent = bbands.percent;
+                    // Niveles de soporte y resistencia
+                    technicals.supports = indicators_1.TechnicalIndicators.findSupportLevels(candles, 3);
+                    technicals.resistances = indicators_1.TechnicalIndicators.findResistanceLevels(candles, 3);
                 }
-                // 2. Establecer valores por defecto para indicadores técnicos
-                let rsi = 50;
-                let emaCross = "neutral";
-                let volumeRatio = 1.0;
-                let bbandPercent = 0.5;
-                let supports = [];
-                let resistances = [];
-                // 3. Obtener datos históricos para cálculo de indicadores
+                // 4. Obtener sentimiento social
+                let sentiment = 50; // Valor neutral por defecto
                 try {
-                    const candles = yield binance_1.binanceService.getHistoricalCandles(symbol, interval, 100);
-                    if (candles.length > 0) {
-                        // Guardar para futuras referencias
-                        this.candles.set(symbol, candles);
-                        // Calcular indicadores técnicos
-                        rsi = indicators_1.TechnicalIndicators.calculateRSI(candles);
-                        emaCross = indicators_1.TechnicalIndicators.calculateEMACross(candles);
-                        volumeRatio = indicators_1.TechnicalIndicators.calculateVolumeRatio(candles);
-                        const bbands = indicators_1.TechnicalIndicators.calculateBollingerBands(candles);
-                        bbandPercent = bbands.percent;
-                        supports = indicators_1.TechnicalIndicators.findSupportLevels(candles, 3);
-                        resistances = indicators_1.TechnicalIndicators.findResistanceLevels(candles, 3);
-                    }
+                    const baseAsset = symbol.replace('USDT', '');
+                    sentiment = (yield lunarcrush_1.lunarCrushService.galaxyScore(baseAsset)) || 50;
                 }
-                catch (innerError) {
-                    logging_1.logger.warn({
-                        symbol,
-                        interval,
-                        error: innerError.message
-                    }, 'Error obteniendo datos históricos para indicadores técnicos');
-                    logging_1.logger.info('Usando valores técnicos por defecto');
+                catch (error) {
+                    logging_1.logger.debug({ symbol, error }, 'Error getting Galaxy Score');
                 }
-                // 4. Construir objeto de datos de mercado
-                return {
-                    price: Number(ticker.lastPrice),
-                    volume24h: Number(ticker.quoteVolume),
-                    sentiment: 0, // Se llenará después con LunarCrush
-                    technicals: {
-                        rsi,
-                        ema_cross: emaCross,
-                        volume_ratio: volumeRatio,
-                        bband_percent: bbandPercent,
-                        supports,
-                        resistances
-                    }
+                // 5. Combinar datos
+                const result = {
+                    price,
+                    volume24h,
+                    sentiment,
+                    technicals
                 };
+                // Guardar en caché
+                this.cache.set(cacheKey, result);
+                return result;
             }
             catch (error) {
-                logging_1.logger.error({
-                    symbol,
-                    interval,
-                    error: error.message
-                }, 'Error obteniendo datos de mercado mejorados');
-                // Devolver estructura mínima en caso de error
+                logging_1.logger.error({ symbol, error }, 'Error getting enhanced market data');
+                // Devolver datos mínimos en caso de error
                 return {
                     price: 0,
                     volume24h: 0,
-                    sentiment: 0
+                    sentiment: 50
                 };
             }
         });
     }
     /**
-     * Filtra una señal de trading basada en criterios técnicos
-     * @param symbol Par de trading
-     * @param action Acción propuesta ('BUY', 'SELL', 'HOLD')
-     * @returns true si pasa todos los filtros técnicos
+     * Obtiene un resumen del mercado global
+     * @returns Estado general del mercado (bearish, neutral, bullish)
      */
-    passesTechnicalFilters(symbol, action) {
+    getMarketSummary() {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            // Clave de caché
+            const cacheKey = 'market_summary';
+            // Verificar caché
+            const cached = this.cache.get(cacheKey);
+            if (cached) {
+                return cached;
+            }
             try {
-                // Obtener datos de mercado actualizados si no hay candles en caché
-                if (!this.candles.has(symbol)) {
-                    yield this.getEnhancedMarketData(symbol);
-                }
-                const candles = this.candles.get(symbol);
-                if (!candles || candles.length === 0) {
-                    logging_1.logger.warn(`No hay datos históricos para ${symbol}, no se pueden aplicar filtros técnicos`);
-                    return false;
-                }
-                // Calcular indicadores técnicos
-                const rsi = indicators_1.TechnicalIndicators.calculateRSI(candles);
-                const volumeRatio = indicators_1.TechnicalIndicators.calculateVolumeRatio(candles);
-                const bbands = indicators_1.TechnicalIndicators.calculateBollingerBands(candles);
-                // Aplicar filtros según tipo de orden
-                if (action === 'BUY') {
-                    // Para compras verificamos
-                    // - RSI no debe estar en sobrecompra (>70)
-                    // - Volumen debe ser suficiente
-                    // - No debe estar en techo de Bollinger
-                    if (rsi > 80) {
-                        logging_1.logger.info({ symbol, rsi }, 'Orden de compra descartada por RSI en sobrecompra');
-                        return false;
+                // Lista de principales criptos para analizar
+                const mainCoins = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT'];
+                const performances = [];
+                let totalSentiment = 0;
+                let totalCoins = 0;
+                // Obtener rendimiento de las principales
+                for (const symbol of mainCoins) {
+                    try {
+                        const candles = yield binance_1.binanceService.getHistoricalCandles(symbol, '1d', 2);
+                        if (candles.length >= 2) {
+                            const yesterdayClose = candles[0].close;
+                            const todayClose = candles[candles.length - 1].close;
+                            const percentChange = (todayClose / yesterdayClose - 1) * 100;
+                            performances.push({
+                                symbol: symbol.replace('USDT', ''),
+                                change: percentChange
+                            });
+                            // Obtener sentimiento
+                            try {
+                                const baseAsset = symbol.replace('USDT', '');
+                                const sentiment = yield lunarcrush_1.lunarCrushService.galaxyScore(baseAsset);
+                                if (sentiment) {
+                                    totalSentiment += sentiment;
+                                    totalCoins++;
+                                }
+                            }
+                            catch (error) {
+                                // Ignorar errores individuales
+                            }
+                        }
                     }
-                    if (volumeRatio < 0.7) {
-                        logging_1.logger.info({ symbol, volumeRatio }, 'Orden de compra descartada por volumen insuficiente');
-                        return false;
-                    }
-                    if (bbands.percent > 0.9) {
-                        logging_1.logger.info({ symbol, bbPercent: bbands.percent }, 'Orden de compra descartada por estar en techo de BB');
-                        return false;
-                    }
-                }
-                else if (action === 'SELL') {
-                    // Para ventas verificamos
-                    // - RSI no debe estar en sobreventa (<30)
-                    // - No debe estar en suelo de Bollinger
-                    if (rsi < 20) {
-                        logging_1.logger.info({ symbol, rsi }, 'Orden de venta descartada por RSI en sobreventa');
-                        return false;
-                    }
-                    if (bbands.percent < 0.1) {
-                        logging_1.logger.info({ symbol, bbPercent: bbands.percent }, 'Orden de venta descartada por estar en suelo de BB');
-                        return false;
+                    catch (error) {
+                        // Ignorar errores individuales
                     }
                 }
-                // Si llega aquí, pasa todos los filtros
-                return true;
+                // Calcular promedio de sentimiento
+                const averageSentiment = totalCoins > 0 ? totalSentiment / totalCoins : 50;
+                // Ordenar por rendimiento
+                performances.sort((a, b) => b.change - a.change);
+                // Calcular dominancia de BTC
+                let btcDominance = 50; // Valor por defecto
+                try {
+                    // Intentar obtener dominancia de BTC (en un entorno real esto vendría de una API)
+                    const btcInfo = yield this.getEnhancedMarketData('BTCUSDT');
+                    // Esta es una aproximación simplificada
+                    btcDominance = ((_a = btcInfo.technicals) === null || _a === void 0 ? void 0 : _a.rsi) || 50;
+                }
+                catch (error) {
+                    // Usar valor por defecto
+                }
+                // Determinar estado del mercado
+                let status = 'neutral';
+                // Contar positivos vs negativos
+                const positiveChanges = performances.filter(p => p.change > 0).length;
+                const negativeChanges = performances.filter(p => p.change < 0).length;
+                if (positiveChanges >= 4) {
+                    status = 'bullish';
+                }
+                else if (negativeChanges >= 4) {
+                    status = 'bearish';
+                }
+                else if (averageSentiment > 70) {
+                    status = 'bullish';
+                }
+                else if (averageSentiment < 30) {
+                    status = 'bearish';
+                }
+                // Resultado
+                const result = {
+                    status,
+                    btcDominance,
+                    top5Performance: performances,
+                    averageSentiment
+                };
+                // Guardar en caché (caducidad de 30 minutos)
+                this.cache.set(cacheKey, result, 30 * 60);
+                return result;
             }
             catch (error) {
-                logging_1.logger.error({ symbol, action, error: error.message }, 'Error aplicando filtros técnicos');
-                // En caso de error, mejor no permitir la operación
-                return false;
-            }
-        });
-    }
-    /**
-     * Obtiene datos de candles más recientes y actualiza el caché interno
-     * @param symbol Par de trading
-     * @param interval Intervalo temporal
-     * @param limit Número de velas a obtener
-     */
-    refreshCandles(symbol_1) {
-        return __awaiter(this, arguments, void 0, function* (symbol, interval = '5m', limit = 100) {
-            try {
-                const freshCandles = yield binance_1.binanceService.getHistoricalCandles(symbol, interval, limit);
-                if (freshCandles.length > 0) {
-                    this.candles.set(symbol, freshCandles);
-                    logging_1.logger.debug({ symbol, count: freshCandles.length }, 'Candles actualizados correctamente');
-                }
-            }
-            catch (error) {
-                logging_1.logger.error({ symbol, interval, error: error.message }, 'Error actualizando candles');
+                logging_1.logger.error({ error }, 'Error getting market summary');
+                // Valores por defecto en caso de error
+                return {
+                    status: 'neutral',
+                    btcDominance: 50,
+                    top5Performance: [],
+                    averageSentiment: 50
+                };
             }
         });
     }
 }
 exports.MarketDataService = MarketDataService;
-// Instancia global del servicio de datos de mercado
+// Crear instancia singleton para uso en toda la aplicación
 exports.marketDataService = new MarketDataService();

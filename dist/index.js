@@ -54,16 +54,22 @@ class StrategyFactory {
             case 'micro':
                 // Si hay configuración personalizada, crear nueva instancia con esta configuración
                 if (config) {
-                    const { MicroCapitalStrategy } = require('./strategies/micro-capital');
-                    return new MicroCapitalStrategy(config);
+                    return new micro_capital_1.MicroCapitalStrategy(config);
                 }
                 // De lo contrario, usar la instancia global
                 return micro_capital_1.microCapitalStrategy;
+            case 'growth':
+                // Para estrategia de crecimiento
+                if (config) {
+                    return new micro_capital_1.MicroCapitalStrategy(config, micro_capital_1.MicroCapitalStrategy.MODE_GROWTH);
+                }
+                // Usar instancia global de growth
+                return micro_capital_1.microGrowthStrategy;
             // Podrías añadir más estrategias según sea necesario
             default:
                 // Fallback a estrategia micro para iniciar
                 logging_1.logger.warn({ requestedStrategy: type }, 'Estrategia solicitada no disponible, usando micro');
-                return config ? new (require('./strategies/micro-capital').MicroCapitalStrategy)(config) : micro_capital_1.microCapitalStrategy;
+                return config ? new micro_capital_1.MicroCapitalStrategy(config) : micro_capital_1.microCapitalStrategy;
         }
     }
 }
@@ -263,27 +269,64 @@ cli
     .option('-s, --symbol <pair>', 'Par de trading', 'BTCUSDT')
     .option('-c, --capital <amount>', 'Capital total disponible', (v) => Number(v), 54)
     .option('-p, --position <amount>', 'Tamaño de posición (USD)', (v) => Number(v), 10)
-    .option('-g, --strategy <type>', 'Estrategia (auto|micro)', 'micro')
+    .option('-g, --strategy <type>', 'Estrategia (auto|micro|growth)', 'micro')
     .option('-i, --interval <seconds>', 'Intervalo en segundos', (v) => Number(v), 180)
     .option('-l, --max-stop-loss <percent>', 'Máximo stop loss permitido', (v) => Number(v), 1.5)
     .option('-t, --take-profit <percent>', 'Objetivo de beneficio', (v) => Number(v), 1.2)
     .option('-f, --min-confidence <num>', 'Confianza mínima para operar (0-1)', (v) => Number(v), 0.85)
     .option('--ignore-market-conditions', 'Ignorar condiciones de mercado desfavorables')
     .option('--allow-bearish', 'Permitir operaciones en mercado bajista')
+    .option('--growth-mode', 'Activar modo de crecimiento acelerado (equivalente a --strategy growth)')
     .option('--dry-run', 'Simulación sin ejecución real')
-    .action((o) => runMicroTrading({
-    symbol: o.symbol,
-    capital: o.capital,
-    strategy: o.strategy,
-    position: o.position,
-    interval: o.interval,
-    maxStopLoss: o.maxStopLoss,
-    takeProfit: o.takeProfit,
-    minConfidence: o.minConfidence,
-    ignoreMarketConditions: o.ignoreMarketConditions,
-    allowBearish: o.allowBearish,
-    dryRun: !!o.dryRun
-}));
+    .action((o) => {
+    // Si se activó el modo de crecimiento, sobreescribir la estrategia
+    if (o.growthMode) {
+        o.strategy = 'growth';
+        // Ajustar parámetros óptimos para crecimiento
+        if (o.minConfidence === 0.85)
+            o.minConfidence = 0.80; // Usar umbral más permisivo si no se especificó
+        if (!o.ignoreMarketConditions)
+            o.ignoreMarketConditions = true; // Ignorar condiciones de mercado por defecto
+    }
+    runMicroTrading({
+        symbol: o.symbol,
+        capital: o.capital,
+        strategy: o.strategy,
+        position: o.position,
+        interval: o.interval,
+        maxStopLoss: o.maxStopLoss,
+        takeProfit: o.takeProfit,
+        minConfidence: o.minConfidence,
+        ignoreMarketConditions: o.ignoreMarketConditions,
+        allowBearish: o.allowBearish,
+        dryRun: !!o.dryRun
+    });
+});
+// Comando específico para crecimiento de capital pequeño
+cli
+    .command('growth-trade')
+    .description('Trading optimizado para maximizar crecimiento de capital pequeño')
+    .option('-s, --symbol <pair>', 'Par de trading', 'BTCUSDT')
+    .option('-c, --capital <amount>', 'Capital total disponible', (v) => Number(v), 54)
+    .option('-i, --interval <seconds>', 'Intervalo en segundos', (v) => Number(v), 180)
+    .option('-p, --pairs <number>', 'Número máximo de pares simultáneos', (v) => Number(v), 2)
+    .option('--auto-size', 'Determinar tamaño de posición automáticamente', true)
+    .option('--dry-run', 'Simulación sin ejecución real')
+    .action((o) => {
+    runMicroTrading({
+        symbol: o.symbol,
+        capital: o.capital,
+        strategy: 'growth', // Usar siempre estrategia de crecimiento
+        position: o.autoSize ? (o.capital * 0.4 / o.pairs) : 10, // 40% del capital dividido entre pares
+        interval: o.interval,
+        maxStopLoss: 1.8, // Stop loss óptimo para crecimiento
+        takeProfit: 2.5, // Take profit más agresivo
+        minConfidence: 0.8, // Umbral de confianza más permisivo
+        ignoreMarketConditions: true, // Ignorar condiciones generales de mercado
+        allowBearish: true, // Permitir operar en mercados bajistas
+        dryRun: !!o.dryRun
+    });
+});
 // Comando para diagnosticar conexiones API
 cli
     .command('diagnose')
@@ -428,6 +471,126 @@ cli
     }
     catch (error) {
         console.error(`Error: ${error.message}`);
+    }
+}));
+// Comando para escanear múltiples pares y encontrar mejores oportunidades
+cli
+    .command('scan-market')
+    .description('Escanear mercado para encontrar mejores oportunidades de trading')
+    .option('-c, --capital <amount>', 'Capital total disponible', (v) => Number(v), 54)
+    .option('-n, --top <number>', 'Mostrar top N oportunidades', (v) => Number(v), 5)
+    .option('-v, --volume <min>', 'Volumen mínimo en millones USD', (v) => Number(v), 5)
+    .option('-g, --growth-focus', 'Priorizar activos con alto potencial de crecimiento')
+    .action((o) => __awaiter(void 0, void 0, void 0, function* () {
+    console.log(`\n=== ESCÁNER DE MERCADO (ENFOQUE: ${o.growthFocus ? 'CRECIMIENTO' : 'BALANCEADO'}) ===`);
+    console.log(`Buscando mejores oportunidades para capital de $${o.capital}...`);
+    try {
+        // 1. Obtener pares disponibles con volumen adecuado
+        console.log('\nObteniendo pares con liquidez adecuada...');
+        // Primero obtener información del exchange
+        const exchangeInfo = yield binance_1.binanceService.getRest().exchangeInfo();
+        // Filtrar solo pares USDT activos
+        const usdtPairs = exchangeInfo.data.symbols
+            .filter((s) => s.quoteAsset === 'USDT' && s.status === 'TRADING')
+            .map((s) => s.symbol);
+        console.log(`Encontrados ${usdtPairs.length} pares USDT activos.`);
+        // 2. Analizar cada par (hasta 20 para no sobrecargar)
+        const pairsToAnalyze = usdtPairs.slice(0, 20);
+        console.log(`\nAnalizando ${pairsToAnalyze.length} pares principales...`);
+        // Array para almacenar resultados
+        const opportunities = [];
+        // Procesar en grupos de 5 para no saturar las APIs
+        for (let i = 0; i < pairsToAnalyze.length; i += 5) {
+            const batch = pairsToAnalyze.slice(i, i + 5);
+            yield Promise.all(batch.map((symbol) => __awaiter(void 0, void 0, void 0, function* () {
+                var _a, _b, _c, _d, _e, _f, _g, _h;
+                try {
+                    // Obtener datos de ticker
+                    const ticker = yield binance_1.binanceService.getTicker24H(symbol);
+                    // Filtrar por volumen mínimo (en millones USD)
+                    if (Number(ticker.quoteVolume) < o.volume * 1000000) {
+                        return;
+                    }
+                    // Obtener galaxy score
+                    const asset = symbol.replace('USDT', '');
+                    const galaxyScore = yield lunarcrush_1.lunarCrushService.galaxyScore(asset);
+                    // Obtener datos de mercado con indicadores
+                    const md = yield market_data_1.marketDataService.getEnhancedMarketData(symbol);
+                    // Calcular score según enfoque
+                    let score = 0;
+                    if (o.growthFocus) {
+                        // Fórmula para crecimiento
+                        // Priorizar: alto Galaxy Score, RSI entre 45-65, volumen creciente
+                        score = ((galaxyScore / 100) * 0.4 + // 40% peso del sentimiento
+                            (((_a = md.technicals) === null || _a === void 0 ? void 0 : _a.rsi) && md.technicals.rsi > 45 && md.technicals.rsi < 65 ? 0.3 : 0) + // RSI óptimo
+                            (((_b = md.technicals) === null || _b === void 0 ? void 0 : _b.volume_ratio) && md.technicals.volume_ratio > 1.2 ? 0.2 : 0) + // Volumen creciente
+                            (((_c = md.technicals) === null || _c === void 0 ? void 0 : _c.ema_cross) === 'bullish' ? 0.1 : 0) // Tendencia alcista
+                        );
+                    }
+                    else {
+                        // Fórmula balanceada
+                        // Priorizar: RSI extremo (sobreventa), soporte técnico
+                        score = ((galaxyScore / 100) * 0.3 + // 30% peso del sentimiento
+                            (((_d = md.technicals) === null || _d === void 0 ? void 0 : _d.rsi) && md.technicals.rsi < 30 ? 0.4 : 0) + // RSI sobreventa
+                            (((_e = md.technicals) === null || _e === void 0 ? void 0 : _e.bband_percent) && md.technicals.bband_percent < 0.2 ? 0.3 : 0) // Cerca de soporte BBand
+                        );
+                    }
+                    // Añadir a oportunidades
+                    if (score > 0.3) { // Umbral mínimo
+                        opportunities.push({
+                            symbol,
+                            score,
+                            price: Number(ticker.lastPrice),
+                            galaxyScore,
+                            rsi: (_f = md.technicals) === null || _f === void 0 ? void 0 : _f.rsi,
+                            trend: (_g = md.technicals) === null || _g === void 0 ? void 0 : _g.ema_cross,
+                            volumeRatio: (_h = md.technicals) === null || _h === void 0 ? void 0 : _h.volume_ratio
+                        });
+                    }
+                }
+                catch (error) {
+                    console.error(`Error analizando ${symbol}: ${error.message}`);
+                }
+            })));
+            // Pausa para evitar rate limits
+            yield new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        // 3. Ordenar y mostrar resultados
+        opportunities.sort((a, b) => b.score - a.score);
+        const topOpportunities = opportunities.slice(0, o.top);
+        if (topOpportunities.length > 0) {
+            console.log('\n--- MEJORES OPORTUNIDADES DE TRADING ---');
+            console.log('--------------------------------------------------------------------------------------------------------');
+            console.log('   SÍMBOLO    |  SCORE  |  PRECIO  | GALAXY SCORE |   RSI   |  TENDENCIA  | VOLUMEN RATIO | RECOMENDACIÓN');
+            console.log('--------------------------------------------------------------------------------------------------------');
+            topOpportunities.forEach((opp, index) => {
+                var _a, _b;
+                // Determinar recomendación
+                let recom = '';
+                if (opp.score > 0.7)
+                    recom = 'EXCELENTE';
+                else if (opp.score > 0.5)
+                    recom = 'MUY BUENA';
+                else
+                    recom = 'BUENA';
+                console.log(`${(index + 1).toString().padStart(2, ' ')}. ${opp.symbol.padEnd(10, ' ')} | ` +
+                    `${opp.score.toFixed(2).padStart(6, ' ')} | ` +
+                    `${opp.price.toFixed(4).padStart(8, ' ')} | ` +
+                    `${opp.galaxyScore.toFixed(0).padStart(12, ' ')} | ` +
+                    `${(((_a = opp.rsi) === null || _a === void 0 ? void 0 : _a.toFixed(0)) || 'N/A').padStart(7, ' ')} | ` +
+                    `${(opp.trend || 'N/A').padEnd(11, ' ')} | ` +
+                    `${(((_b = opp.volumeRatio) === null || _b === void 0 ? void 0 : _b.toFixed(2)) || 'N/A').padStart(12, ' ')} | ` +
+                    `${recom}`);
+            });
+            console.log('\nComando para operar en mejor oportunidad:');
+            console.log(`node src/index.js growth-trade -s ${topOpportunities[0].symbol} -c ${o.capital}`);
+        }
+        else {
+            console.log('\nNo se encontraron oportunidades que cumplan los criterios.');
+        }
+    }
+    catch (error) {
+        console.error(`Error escaneando mercado: ${error.message}`);
     }
 }));
 // Analizar argumentos de línea de comandos
