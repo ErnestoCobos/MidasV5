@@ -19,10 +19,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// Inicializar todos los componentes del sistema
-const init_1 = require("./utils/init");
-(0, init_1.initializeSystem)();
 const commander_1 = require("commander");
+const init_1 = require("./utils/init");
 const logging_1 = require("./utils/logging");
 const lunarcrush_1 = require("./services/lunarcrush");
 const deepseek_1 = require("./services/deepseek");
@@ -30,6 +28,7 @@ const binance_1 = require("./services/binance");
 const market_data_1 = require("./services/market-data");
 const micro_capital_1 = require("./strategies/micro-capital");
 const trade_history_1 = require("./services/trade-history");
+const database_1 = require("./services/database");
 const p_queue_1 = __importDefault(require("p-queue"));
 // -----------------------------------------------------------------------------
 // Estrategia Factory 
@@ -124,14 +123,14 @@ function runBot(opts) {
                             const buyOrder = yield binance_1.binanceService.buy(opts.symbol, opts.quote, opts.dryRun);
                             // Registrar operación en el historial
                             if (buyOrder) {
-                                trade_history_1.tradeHistoryService.registerBuyOperation(buyOrder, opts.symbol, signal, 'standard');
+                                yield trade_history_1.tradeHistoryService.registerBuyOperation(buyOrder, opts.symbol, signal, 'standard');
                             }
                         }
                         if (signal.action === 'SELL') {
                             const sellOrder = yield binance_1.binanceService.sell(opts.symbol, opts.dryRun);
                             // Registrar venta en el historial
                             if (sellOrder) {
-                                trade_history_1.tradeHistoryService.registerSellOperation(sellOrder, opts.symbol);
+                                yield trade_history_1.tradeHistoryService.registerSellOperation(sellOrder, opts.symbol);
                             }
                         }
                     }
@@ -226,14 +225,14 @@ function runMicroTrading(opts) {
                             }
                             // Registrar operación en el historial
                             if (buyOrder) {
-                                trade_history_1.tradeHistoryService.registerBuyOperation(buyOrder, opts.symbol, signal, opts.strategy);
+                                yield trade_history_1.tradeHistoryService.registerBuyOperation(buyOrder, opts.symbol, signal, opts.strategy);
                             }
                         }
                         if (signal.action === 'SELL') {
                             const sellOrder = yield binance_1.binanceService.sell(opts.symbol, opts.dryRun);
                             // Registrar venta en el historial
                             if (sellOrder) {
-                                trade_history_1.tradeHistoryService.registerSellOperation(sellOrder, opts.symbol);
+                                yield trade_history_1.tradeHistoryService.registerSellOperation(sellOrder, opts.symbol);
                             }
                         }
                     }
@@ -330,10 +329,10 @@ cli
         dryRun: !!o.dryRun
     });
 });
-// Comando para diagnosticar conexiones API
+// Comando para diagnosticar conexiones API y base de datos
 cli
     .command('diagnose')
-    .description('Diagnosticar conexiones a APIs')
+    .description('Diagnosticar conexiones a APIs y base de datos')
     .action(() => __awaiter(void 0, void 0, void 0, function* () {
     console.log('=== DIAGNÓSTICO DE APIs ===');
     // Probar LunarCrush
@@ -377,6 +376,28 @@ cli
     }
     catch (error) {
         console.log(`❌ Binance Error: ${error.message}`);
+    }
+    // Probar la base de datos PostgreSQL
+    console.log('\nProbando conexión a PostgreSQL...');
+    try {
+        const isConnected = yield database_1.db.testConnection();
+        if (isConnected) {
+            console.log('✅ PostgreSQL OK: Conexión establecida correctamente');
+            // Verificar si TimescaleDB está disponible
+            const hasTimescaleDB = yield database_1.db.hasTimescaleDB();
+            if (hasTimescaleDB) {
+                console.log('✅ TimescaleDB OK: Extensión activa y disponible');
+            }
+            else {
+                console.log('ℹ️ TimescaleDB no está disponible (opcional, pero recomendado para datos temporales)');
+            }
+        }
+        else {
+            console.log('❌ PostgreSQL Error: No se pudo establecer conexión');
+        }
+    }
+    catch (error) {
+        console.log(`❌ PostgreSQL Error: ${error.message}`);
     }
     console.log('\n=== DIAGNÓSTICO COMPLETADO ===');
 }));
@@ -429,7 +450,7 @@ cli
     console.log('\n=== ESTADÍSTICAS DE TRADING ===');
     try {
         // Obtener estadísticas
-        const stats = trade_history_1.tradeHistoryService.getPerformanceStats(o.symbol, o.days);
+        const stats = yield trade_history_1.tradeHistoryService.getPerformanceStats(o.symbol, o.days);
         // Mostrar estadísticas globales
         console.log(`\nEstadísticas (últimos ${o.days} días):`);
         console.log(`Total operaciones: ${stats.totalTrades}`);
@@ -452,7 +473,7 @@ cli
             filters.status = o.status;
         }
         // Obtener historial de operaciones
-        const trades = trade_history_1.tradeHistoryService.getTradeHistory(filters);
+        const trades = yield trade_history_1.tradeHistoryService.getTradeHistory(filters);
         if (trades.length > 0) {
             console.log(`\nHistorial de Operaciones (últimas ${Math.min(o.limit, trades.length)}):`);
             console.log('--------------------------------------------------------------------------------');
@@ -596,5 +617,17 @@ cli
         console.error(`Error escaneando mercado: ${error.message}`);
     }
 }));
-// Analizar argumentos de línea de comandos
-cli.parse(process.argv);
+// Inicializar el sistema asincrónicamente primero
+(() => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        console.log('Inicializando midasTS...');
+        yield (0, init_1.initializeSystem)();
+        console.log('Sistema inicializado correctamente. Ejecutando comando...');
+        // Analizar argumentos de línea de comandos
+        cli.parse(process.argv);
+    }
+    catch (error) {
+        console.error('Error al inicializar el sistema:', error);
+        process.exit(1);
+    }
+}))();
