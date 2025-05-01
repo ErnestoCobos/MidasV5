@@ -1,0 +1,50 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check for TypeScript errors
+        run: npx tsc --noEmit
+      
+      # Uncomment when ESLint is configured in the project
+      # - name: Lint
+      #   run: npm run lint
+      
+  dependency-check:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+      
+      - name: Audit dependencies
+        run: npm audit --production
+      
+      - name: Check for outdated dependencies
+        run: npm outdated || true

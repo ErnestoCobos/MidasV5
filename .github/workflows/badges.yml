@@ -1,0 +1,37 @@
+name: Update Badges
+
+on:
+  workflow_run:
+    workflows: ["Tests"]
+    branches: [main, master]
+    types:
+      - completed
+
+jobs:
+  update-badges:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+      
+      - name: Download coverage reports
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: test.yml
+          name: coverage-report
+          path: coverage
+      
+      - name: Generate Coverage Badge
+        run: npm run coverage:summary && npm run coverage:badge
+      
+      - name: Commit and push badge
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions
+          author_email: github-actions@github.com
+          message: 'chore: update coverage badge'
+          add: '.github/badges/coverage.svg'
+          push: true

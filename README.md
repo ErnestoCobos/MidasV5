@@ -1,5 +1,9 @@
 # MidasTS: Sistema de Trading Algorítmico con DeepSeek IA
 
+[![Tests](https://github.com/username/midasTS/actions/workflows/test.yml/badge.svg)](https://github.com/username/midasTS/actions/workflows/test.yml)
+[![Cobertura de Pruebas](https://github.com/username/midasTS/raw/main/.github/badges/coverage.svg)](./docs/test-coverage.md)
+[![Calidad de Código](https://github.com/username/midasTS/actions/workflows/code-quality.yml/badge.svg)](https://github.com/username/midasTS/actions/workflows/code-quality.yml)
+
 Sistema de trading algorítmico optimizado para el crecimiento de capital pequeño (desde $54 USD) que utiliza DeepSeek Reasoner como núcleo de decisión.
 
 ## Características Principales
@@ -81,6 +85,32 @@ El sistema utiliza DeepSeek Reasoner para:
   - `BINANCE_API_SECRET`
   - `DEEPSEEK_API_KEY`
   - `LUNARCRUSH_API_KEY`
+
+## Desarrollo
+
+### Tests y Cobertura
+
+Para ejecutar las pruebas con cobertura:
+
+```bash
+npm run test:coverage
+```
+
+Para ver el informe de cobertura en el navegador:
+
+```bash
+npm run coverage:view
+```
+
+### GitHub Actions
+
+El proyecto utiliza GitHub Actions para automatizar los siguientes procesos:
+
+- **Tests**: Ejecuta pruebas automatizadas en múltiples versiones de Node.js
+- **Cobertura de Código**: Genera informes de cobertura y actualiza la insignia
+- **Calidad de Código**: Verifica errores de TypeScript y audita dependencias
+
+Para más detalles, consulta la [documentación de GitHub Actions](docs/github-actions.md).
 
 ## Limitaciones
 

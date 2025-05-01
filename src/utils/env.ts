@@ -57,14 +57,30 @@ export function validateEnv() {
     
     logger.error('Error inesperado validando variables de entorno', error);
     process.exit(1);
+    return undefined; // Nunca se ejecutará, pero ayuda con el tipado
   }
 }
 
-// Exportar las variables validadas para uso en la aplicación
-export const env = validateEnv();
+// Inicializa env solo si no estamos en un entorno de prueba
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.npm_lifecycle_event === 'test';
 
-// Exportar flag de modo simulación (DRY_RUN)
-export const isDryRun = env.DRY_RUN;
+// Exportar las variables validadas para uso en la aplicación, de forma segura para pruebas
+let envVars: ReturnType<typeof envSchema.parse> | undefined;
 
-// Exportar función de utilidad para determinar si estamos en modo producción
-export const isProduction = env.NODE_ENV === 'production';
+try {
+  // Solo validamos automáticamente si no estamos en pruebas
+  if (!isTestEnv) {
+    envVars = validateEnv();
+  }
+} catch (e) {
+  // Capturar errores silenciosamente en modo prueba
+  if (!isTestEnv) {
+    throw e;
+  }
+}
+
+export const env = envVars;
+
+// Exportar getters que son seguros para testing
+export const isDryRun = () => env?.DRY_RUN ?? true;
+export const isProduction = () => env?.NODE_ENV === 'production';

@@ -5,7 +5,13 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "telegram-bot": "ts-node src/run-telegram-bot.ts"
+    "telegram-bot": "ts-node src/run-telegram-bot.ts",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "coverage:view": "open coverage/index.html",
+    "coverage:summary": "node scripts/generate-coverage-summary.js",
+    "coverage:badge": "node scripts/generate-coverage-badge.js"
   },
   "dependencies": {
     "@binance/spot": "^4.0.0",
@@ -32,9 +38,12 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/node": "^22.15.3",
     "@types/p-throttle": "^1.1.0",
     "@types/prompts": "^2.4.9",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.3"
   },
