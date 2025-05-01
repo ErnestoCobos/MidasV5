@@ -1,52 +1,71 @@
 # Test Coverage
 
-This project has been configured with Jest test coverage reporting. The coverage setup collects data on how much of the codebase is covered by tests.
+## Descripción General
 
-## Current Coverage Status
+Este proyecto utiliza Jest como framework de pruebas y tiene configurado el seguimiento de cobertura de código. Los informes de cobertura se generan automáticamente durante las ejecuciones de CI/CD y se pueden generar localmente para análisis.
 
-As of now, the project has minimal test coverage (less than 1%). The first step to improving test quality is having visibility into what parts of the code are tested.
+## Ejecución Local de Pruebas con Cobertura
 
-## Running Tests with Coverage
+Para ejecutar las pruebas con generación de informes de cobertura:
 
 ```bash
-# Run tests with coverage
 npm run test:coverage
-
-# Open the HTML coverage report in your browser
-npm run coverage:view
-
-# Run tests in watch mode (useful during development)
-npm run test:watch
 ```
 
-## Coverage Configuration
+Este comando ejecutará todas las pruebas y generará un informe detallado de la cobertura del código en el directorio `coverage/`.
 
-The coverage configuration is in `jest.config.js` and includes the following:
+## Visualización del Informe de Cobertura
 
-- Coverage reports are generated in `./coverage/`
-- Multiple report formats: text, HTML, lcov, and clover
-- Coverage thresholds are temporarily disabled but can be enabled when more tests are added
+Después de ejecutar las pruebas con cobertura, puedes ver el informe HTML en tu navegador:
 
-## Excluded Files
+```bash
+npm run coverage:view
+```
 
-The following files are excluded from coverage reports:
-- Type definition files (*.d.ts)
-- Test files (*.test.ts)
-- Worker runner (worker-runner.js)
-- Demo files (demo-kelly.js)
-- Run-specific files (run-*.ts, run-*.js)
+## Insignias de Cobertura
 
-## Increasing Coverage
+Este proyecto genera automáticamente una insignia de cobertura que se puede incluir en el README.md. Esta insignia se actualiza cuando:
 
-To increase test coverage:
+1. Se ejecutan las pruebas con éxito en la rama principal (main/master)
+2. El flujo de trabajo de GitHub Actions dedicado a las insignias procesa los resultados
 
-1. Focus on writing tests for critical business logic first
-2. Look at the coverage report to identify untested areas
-3. Incrementally add tests for components and utilities
-4. When sufficient tests are in place, enable coverage thresholds in jest.config.js
+La insignia muestra el porcentaje de cobertura de líneas de código y utiliza un esquema de colores para indicar la calidad:
 
-## Future Improvements
+- 🟩 Verde (>= 90%): Excelente cobertura
+- 🟨 Verde amarillento (>= 80%): Buena cobertura
+- 🟨 Amarillo (>= 70%): Cobertura aceptable
+- 🟧 Naranja (>= 50%): Cobertura baja
+- 🟥 Rojo (< 50%): Cobertura insuficiente
 
-- Add coverage thresholds when coverage improves
-- Integrate coverage reporting with CI/CD pipelines
-- Add more comprehensive tests for core functionality
+## Scripts de Generación de Informes
+
+El proyecto incluye dos scripts para la generación de informes de cobertura:
+
+1. `scripts/generate-coverage-summary.js`: Analiza los archivos de cobertura y genera un resumen JSON
+2. `scripts/generate-coverage-badge.js`: Crea una insignia SVG basada en el resumen de cobertura
+
+Estos scripts se ejecutan automáticamente en el flujo de trabajo de CI/CD, pero también pueden ejecutarse manualmente:
+
+```bash
+npm run coverage:summary
+npm run coverage:badge
+```
+
+## Configuración de Jest
+
+La configuración de Jest para la cobertura se encuentra en el archivo `jest.config.js`. Por defecto:
+
+- Se recogen métricas para líneas, declaraciones, funciones y ramas
+- Se excluyen algunos directorios como `node_modules` y archivos de configuración
+
+## Umbrales de Cobertura
+
+Actualmente no hay umbrales mínimos de cobertura configurados que causen fallos en los procesos de CI/CD. Sin embargo, se recomienda mantener al menos un 70% de cobertura de líneas para el código de producción.
+
+## Mejora Continua
+
+Para mejorar la cobertura de pruebas:
+
+1. Prioriza la escritura de pruebas para componentes críticos y lógica de negocio
+2. Utiliza el informe HTML detallado para identificar áreas sin cobertura
+3. Considera implementar umbrales mínimos de cobertura en el futuro

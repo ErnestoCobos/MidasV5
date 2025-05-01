@@ -1,6 +1,6 @@
 # GitHub Actions
 
-Este proyecto utiliza GitHub Actions para automatizar procesos de pruebas, análisis de código y publicación. A continuación se detallan los flujos de trabajo configurados.
+Este proyecto utiliza GitHub Actions para automatizar procesos de pruebas, análisis de código, publicación y generación de insignias. A continuación se detallan los flujos de trabajo configurados.
 
 ## Flujos de trabajo (Workflows)
 
@@ -35,6 +35,22 @@ Realiza verificaciones de calidad de código y seguridad.
 
 **Notas:**
 - La verificación de linting está comentada y debe ser activada una vez que se configure ESLint en el proyecto.
+
+### 3. Actualización de Insignias (`.github/workflows/badges.yml`)
+
+Actualiza las insignias de cobertura de código después de que se completa exitosamente el flujo de trabajo de pruebas.
+
+**Eventos de activación:**
+- Finalización exitosa del flujo de trabajo "Tests" en las ramas `main` o `master`
+
+**Tareas:**
+- Descarga los artefactos de cobertura generados por el flujo de trabajo de pruebas
+- Genera un resumen de cobertura y una insignia SVG
+- Hace commit y push de la insignia actualizada al repositorio
+
+**Permisos requeridos:**
+- `contents: write`: Para hacer commit y push de los cambios
+- `actions: read`: Para acceder a los artefactos de otros flujos de trabajo
 
 ## Personalización
 
