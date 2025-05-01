@@ -29,34 +29,105 @@ jobs:
     
     - name: Check architecture
       run: npm run check:architecture
+      
+    - name: Check missing tests
+      run: |
+        echo "Checking for source files without tests..."
+        MISSING_TESTS=$(node scripts/generate-tests.js --check)
+        echo "${MISSING_TESTS}" > missing-tests.log
+        if grep -q "Found [1-9]" missing-tests.log; then
+          echo "⚠️ Some source files are missing tests!"
+          cat missing-tests.log
+          echo "::warning::Some source files are missing tests. Consider using npm run test:generate to create them."
+        else
+          echo "✅ All source files have corresponding test files."
+        fi
     
-    - name: Run tests with coverage
+    - name: Run unit tests
+      run: npm run test:unit
+    
+    - name: Run integration tests
+      run: npm run test:integration
+    
+    - name: Run full test suite with coverage
       run: npm run test:coverage
       id: coverage
+      
+    - name: Extract coverage information
+      run: |
+        COVERAGE_SUMMARY=$(cat coverage/coverage-summary.json)
+        COVERAGE_PCT=$(echo $COVERAGE_SUMMARY | jq -r '.total.lines.pct')
+        COVERAGE_FILES=$(echo $COVERAGE_SUMMARY | jq -r '.total.lines.total')
+        echo "COVERAGE_PCT=$COVERAGE_PCT" >> $GITHUB_ENV
+        echo "COVERAGE_FILES=$COVERAGE_FILES" >> $GITHUB_ENV
+        
+        # Create report summary
+        echo "## Coverage by Component" > coverage-report.md
+        echo "" >> coverage-report.md
+        echo "| Component | Coverage |" >> coverage-report.md
+        echo "|-----------|----------|" >> coverage-report.md
+        
+        # Core components
+        CORE_PCT=$(echo $COVERAGE_SUMMARY | jq -r '.["src/core/"].lines.pct // "N/A"')
+        echo "| Core | ${CORE_PCT}% |" >> coverage-report.md
+        
+        # Services
+        SERVICES_PCT=$(echo $COVERAGE_SUMMARY | jq -r '.["src/services/"].lines.pct // "N/A"')
+        echo "| Services | ${SERVICES_PCT}% |" >> coverage-report.md
+        
+        # Utils
+        UTILS_PCT=$(echo $COVERAGE_SUMMARY | jq -r '.["src/utils/"].lines.pct // "N/A"')
+        echo "| Utils | ${UTILS_PCT}% |" >> coverage-report.md
+        
+        cat coverage-report.md
     
     - name: Run backtests
       run: npm test
       continue-on-error: true
+    
+    - name: Generate documentation
+      run: npm run docs
     
     - name: Comment PR with coverage report
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         recreate: true
         message: |
-          ## Coverage Report
+          ## PR Validation Results
           
-          ### Summary
-          - Total Coverage: ${{ steps.coverage.outputs.coverage }}%
-          - Files Covered: ${{ steps.coverage.outputs.files }}
+          ### Coverage Summary
+          - Total Coverage: ${{ env.COVERAGE_PCT }}%
+          - Required Coverage: 80%
+          - Status: ${{ env.COVERAGE_PCT >= 80 && '✅ Passed' || '⚠️ Below target' }}
           
-          ### Details
+          $(cat coverage-report.md)
+          
+          ### Documentation
+          - API Reference: ✅ Updated
+          
+          ### Test Results
+          - Unit Tests: ✅ Passed
+          - Integration Tests: ✅ Passed
+          
           <details>
           <summary>Expand for full coverage report</summary>
           
           ```
-          ${{ steps.coverage.outputs.report }}
+          $(cat coverage/lcov-report/index.html | grep -o '<div class="clearfix">.*</div>' | head -n 20)
           ```
           
           </details>
           
           [View full report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+    
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage/
+        
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/reference/

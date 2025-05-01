@@ -1,0 +1,18 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/reference",
+  "excludePrivate": true,
+  "excludeExternals": true,
+  "theme": "default",
+  "categorizeByGroup": true,
+  "categoryOrder": ["Core", "Services", "Adapters", "Utils"],
+  "readme": "none",
+  "sort": ["alphabetical"],
+  "name": "MidasTS API Reference",
+  "exclude": ["**/node_modules/**", "**/*.test.ts", "**/*.spec.ts"],
+  "includeVersion": true,
+  "disableSources": false,
+  "githubPages": false,
+  "includeVersion": true,
+  "skipErrorChecking": true
+}

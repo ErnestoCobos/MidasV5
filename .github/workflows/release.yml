@@ -5,8 +5,44 @@ on:
     branches: [ main ]
 
 jobs:
+  test-and-document:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests with coverage
+      run: npm run test:coverage
+    
+    - name: Generate coverage badge
+      run: npm run coverage:badge
+    
+    - name: Generate API documentation
+      run: npm run docs
+    
+    - name: Update documentation based on changes
+      run: npm run docs:update
+    
+    - name: Save documentation as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/
+
   release:
     runs-on: ubuntu-latest
+    needs: test-and-document
     
     steps:
     - uses: actions/checkout@v3
@@ -22,6 +58,12 @@ jobs:
     
     - name: Install dependencies
       run: npm ci
+    
+    - name: Download documentation
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs/
     
     - name: Build
       run: npm run build

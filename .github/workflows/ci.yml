@@ -35,8 +35,24 @@ jobs:
     - name: Check circular dependencies
       run: npm run check:circular
     
-    - name: Run tests with coverage
+    - name: Run unit tests
+      run: npm run test:unit
+      
+    - name: Run integration tests
+      run: npm run test:integration
+    
+    - name: Run E2E tests
+      run: npm run test:e2e
+      continue-on-error: true # Allow E2E tests to fail for now as they're still in development
+    
+    - name: Run full test suite with coverage
       run: npm run test:coverage
+    
+    - name: Generate documentation
+      run: npm run docs
+    
+    - name: Update coverage badge
+      run: npm run coverage:badge
     
     - name: Build
       run: npm run build
@@ -46,3 +62,9 @@ jobs:
       with:
         name: coverage-report
         path: coverage/
+        
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/reference/
