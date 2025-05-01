@@ -1,8 +1,8 @@
 # MidasTS: Sistema de Trading Algorítmico con DeepSeek IA
 
-[![Tests](https://github.com/username/midasTS/actions/workflows/test.yml/badge.svg)](https://github.com/username/midasTS/actions/workflows/test.yml)
-[![Cobertura de Pruebas](https://github.com/username/midasTS/raw/main/.github/badges/coverage.svg)](./docs/test-coverage.md)
-[![Calidad de Código](https://github.com/username/midasTS/actions/workflows/code-quality.yml/badge.svg)](https://github.com/username/midasTS/actions/workflows/code-quality.yml)
+[![Tests](https://github.com/ErnestoCobos/MidasV5/actions/workflows/test.yml/badge.svg)](https://github.com/ErnestoCobos/MidasV5/actions/workflows/test.yml)
+[![Cobertura de Pruebas](https://github.com/ErnestoCobos/MidasV5/raw/main/.github/badges/coverage.svg)](./docs/test-coverage.md)
+[![Calidad de Código](https://github.com/ErnestoCobos/MidasV5/actions/workflows/code-quality.yml/badge.svg)](https://github.com/ErnestoCobos/MidasV5/actions/workflows/code-quality.yml)
 
 Sistema de trading algorítmico optimizado para el crecimiento de capital pequeño (desde $54 USD) que utiliza DeepSeek Reasoner como núcleo de decisión.
 
