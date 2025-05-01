@@ -5,7 +5,7 @@ import { tradeRepository } from '../repositories/trade-repository';
 import { marketDataRepository } from '../repositories/market-data-repository';
 import { TradeOperation } from '../services/trade-history';
 import { db, DatabaseService } from '../services/database';
-import { env } from './env';
+import { env, getEnv } from './env';
 
 /**
  * Migra datos existentes desde archivos JSON a la base de datos PostgreSQL
@@ -76,7 +76,7 @@ async function migrateTradeHistory(): Promise<void> {
     logger.info(`Migración de historial de operaciones completada: ${tradeData.length} operaciones migradas`);
     
     // Opcionalmente, hacer backup del archivo original
-    if (env.BACKUP_JSON_FILES) {
+    if (getEnv().BACKUP_JSON_FILES) {
       const backupPath = `${tradeHistoryPath}.bak.${Date.now()}`;
       fs.copyFileSync(tradeHistoryPath, backupPath);
       logger.info({ backupPath }, 'Archivo de historial de operaciones respaldado');
@@ -93,11 +93,12 @@ async function migrateTradeHistory(): Promise<void> {
 export async function initializeDatabase(): Promise<boolean> {
   try {
     // Configurar la conexión a la base de datos
+    const config = getEnv();
     DatabaseService.getInstance({
-      connectionString: env.DATABASE_URL,
-      ssl: env.DATABASE_SSL,
-      max: env.DATABASE_MAX_CONNECTIONS,
-      idleTimeoutMillis: env.DATABASE_IDLE_TIMEOUT
+      connectionString: config.DATABASE_URL,
+      ssl: config.DATABASE_SSL,
+      max: config.DATABASE_MAX_CONNECTIONS,
+      idleTimeoutMillis: config.DATABASE_IDLE_TIMEOUT
     });
     
     // Probar la conexión
@@ -111,7 +112,7 @@ export async function initializeDatabase(): Promise<boolean> {
     await db.enableExtensions(['pgcrypto']);
     
     // Si TimescaleDB está disponible y se solicita utilizarlo, activarlo
-    if (env.USE_TIMESCALE) {
+    if (getEnv().USE_TIMESCALE) {
       try {
         await db.enableExtensions(['timescaledb']);
       } catch (error) {
@@ -124,7 +125,7 @@ export async function initializeDatabase(): Promise<boolean> {
     await marketDataRepository.createTables();
     
     // Ejecutar migración si está habilitada
-    if (env.MIGRATE_DATA) {
+    if (getEnv().MIGRATE_DATA) {
       await migrateDataToPostgres();
     }
     

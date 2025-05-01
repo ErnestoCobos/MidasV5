@@ -1,6 +1,6 @@
 import { db } from '../services/database';
 import { logger } from '../utils/logging';
-import { env } from '../utils/env';
+import { env, getEnv } from '../utils/env';
 import { QueryResult } from 'pg';
 
 /**
@@ -115,14 +115,15 @@ export class MarketDataRepository {
       `);
       
       // Configurar TimescaleDB si está disponible
-      if (hasTimescaleDB && env.USE_TIMESCALE) {
+      if (hasTimescaleDB && getEnv().USE_TIMESCALE) {
         try {
+          const config = getEnv();
           // Configurar hypertables para TimescaleDB
           await db.query(`
             -- Convertir tabla de velas a hypertable
             SELECT create_hypertable('market_data_candles', 'time', 
               if_not_exists => TRUE, 
-              chunk_time_interval => INTERVAL '${env.TIMESCALE_CHUNK_INTERVAL_DAYS} day'
+              chunk_time_interval => INTERVAL '${config.TIMESCALE_CHUNK_INTERVAL_DAYS} day'
             );
           `);
           
@@ -130,7 +131,7 @@ export class MarketDataRepository {
           await db.query(`
             SELECT create_hypertable('market_sentiment', 'time', 
               if_not_exists => TRUE, 
-              chunk_time_interval => INTERVAL '${env.TIMESCALE_CHUNK_INTERVAL_DAYS} day'
+              chunk_time_interval => INTERVAL '${config.TIMESCALE_CHUNK_INTERVAL_DAYS} day'
             );
           `);
           
@@ -138,7 +139,7 @@ export class MarketDataRepository {
           await db.query(`
             SELECT create_hypertable('calculated_indicators', 'time', 
               if_not_exists => TRUE, 
-              chunk_time_interval => INTERVAL '${env.TIMESCALE_CHUNK_INTERVAL_DAYS} day'
+              chunk_time_interval => INTERVAL '${config.TIMESCALE_CHUNK_INTERVAL_DAYS} day'
             );
           `);
           
@@ -146,17 +147,17 @@ export class MarketDataRepository {
           await db.query(`
             -- Política de compresión para datos antiguos
             SELECT add_compression_policy('market_data_candles', 
-              INTERVAL '${env.TIMESCALE_COMPRESSION_AFTER_DAYS} days', 
+              INTERVAL '${config.TIMESCALE_COMPRESSION_AFTER_DAYS} days', 
               if_not_exists => TRUE
             );
             
             SELECT add_compression_policy('market_sentiment', 
-              INTERVAL '${env.TIMESCALE_COMPRESSION_AFTER_DAYS} days', 
+              INTERVAL '${config.TIMESCALE_COMPRESSION_AFTER_DAYS} days', 
               if_not_exists => TRUE
             );
             
             SELECT add_compression_policy('calculated_indicators', 
-              INTERVAL '${env.TIMESCALE_COMPRESSION_AFTER_DAYS} days', 
+              INTERVAL '${config.TIMESCALE_COMPRESSION_AFTER_DAYS} days', 
               if_not_exists => TRUE
             );
           `);
@@ -165,7 +166,7 @@ export class MarketDataRepository {
         } catch (error) {
           logger.warn({ error }, 'Error configurando TimescaleDB. Las tablas se usarán como PostgreSQL estándar');
         }
-      } else if (env.USE_TIMESCALE) {
+      } else if (getEnv().USE_TIMESCALE) {
         logger.warn('TimescaleDB solicitado pero no disponible. Las tablas se usarán como PostgreSQL estándar');
       }
       
@@ -413,7 +414,7 @@ export class MarketDataRepository {
       // Comprobar si TimescaleDB está disponible
       const hasTimescaleDB = await db.hasTimescaleDB();
       
-      if (hasTimescaleDB && env.USE_TIMESCALE) {
+      if (hasTimescaleDB && getEnv().USE_TIMESCALE) {
         // Consulta con funciones de TimescaleDB
         const result = await db.query(`
           SELECT 

@@ -33,7 +33,7 @@ interface BotSession extends Scenes.SceneSession {
 }
 
 // Define el tipo context que extiende el original de Telegraf
-interface BotContext extends Context {
+export interface BotContext extends Context {
   session: BotSession;
   scene: Scenes.SceneContextScene<BotContext>;
 }
@@ -360,6 +360,9 @@ Para más información, visita: https://github.com/usuario/midasTS
         const lunarCrushStatus = await this.checkLunarCrushConnection();
         const dbStatus = await this.checkDatabaseConnection();
         
+        // Convertir el contexto a BotContext para acceder a la sesión de forma segura
+        const botCtx = ctx as BotContext;
+        
         // Construir mensaje de estado
         const statusMessage = `
 <b>📊 Estado del Sistema MidasTS</b>
@@ -374,8 +377,8 @@ Para más información, visita: https://github.com/usuario/midasTS
 - Tasa de éxito: ${await this.getSuccessRate()}%
 
 <b>Estado del Bot:</b>
-- Sesión iniciada como: @${(ctx.session as BotSession).username}
-- Notificaciones: ${(ctx.session as BotSession).notifications.signals ? '✅' : '❌'} Señales, ${(ctx.session as BotSession).notifications.trades ? '✅' : '❌'} Operaciones
+- Sesión iniciada como: @${botCtx.session.username}
+- Notificaciones: ${botCtx.session.notifications.signals ? '✅' : '❌'} Señales, ${botCtx.session.notifications.trades ? '✅' : '❌'} Operaciones
 
 <i>Actualizado: ${new Date().toLocaleString()}</i>
         `;
@@ -395,8 +398,11 @@ Para más información, visita: https://github.com/usuario/midasTS
     
     // Comando /price - Obtener precio actual
     this.bot.command('price', async (ctx: Context) => {
-      const text = ctx.message?.text;
-      const parts = text?.split(' ');
+      // Convertir a BotContext para manejar la sesión
+      const botCtx = ctx as BotContext;
+      // Verificar si el mensaje tiene texto y extraer las partes
+      const messageText = 'text' in ctx.message! ? ctx.message.text : '';
+      const parts = messageText?.split(' ');
       
       if (!parts || parts.length < 2) {
         await ctx.reply('⚠️ Uso correcto: /price SÍMBOLO\nEjemplo: /price BTC');
@@ -418,7 +424,7 @@ Para más información, visita: https://github.com/usuario/midasTS
         }
         
         // Guardar símbolo actual en sesión para uso posterior
-        (ctx.session as BotSession).currentSymbol = symbol;
+        botCtx.session.currentSymbol = symbol;
         
         // Preparar mensaje con datos del ticker
         const priceMessage = `
@@ -539,8 +545,9 @@ Para más información, visita: https://github.com/usuario/midasTS
     
     // Callback para solicitar señal de trading
     this.bot.action(/signal_(.+)/, async (ctx) => {
-      // Extraer símbolo del callback data
-      const match = ctx.callbackQuery?.data?.match(/signal_(.+)/);
+      // Extraer símbolo del callback data (usando type assertion)
+      const callbackData = (ctx.callbackQuery as any)?.data;
+      const match = callbackData?.match(/signal_(.+)/);
       const symbol = match ? match[1] : '';
       
       // Eliminar mensaje original para evitar múltiples clics
@@ -562,7 +569,9 @@ Para más información, visita: https://github.com/usuario/midasTS
     
     // Callback para mostrar análisis técnico
     this.bot.action(/technicals_(.+)/, async (ctx) => {
-      const match = ctx.callbackQuery?.data?.match(/technicals_(.+)/);
+      // Extraer símbolo del callback data (usando type assertion)
+      const callbackData = (ctx.callbackQuery as any)?.data;
+      const match = callbackData?.match(/technicals_(.+)/);
       const symbol = match ? match[1] : '';
       await ctx.answerCbQuery(`Analizando ${symbol}...`);
       
@@ -702,23 +711,23 @@ Para más información, visita: https://github.com/usuario/midasTS
   private async getPortfolioData(): Promise<PortfolioPosition[]> {
     try {
       // Implementación básica - En la integración real, obtener de Binance
-      const positions: PortfolioPosition[] = [];
-      
-      // Obtener posiciones abiertas desde el historial
-      const openTrades = await tradeHistoryService.getTradeHistory({ status: 'OPEN' });
-      
-      // Para cada trade, obtener precio actual
-      for (const trade of openTrades) {
-        const ticker = await binanceService.getTicker24H(trade.symbol);
-        if (ticker) {
-          positions.push({
-            symbol: trade.symbol,
-            amount: trade.quantity,
-            entryPrice: trade.entry,
-            currentPrice: parseFloat(ticker.lastPrice)
-          });
-        }
-      }
+          const positions: PortfolioPosition[] = [];
+          
+          // Obtener posiciones abiertas desde el historial
+          const openTrades = await tradeHistoryService.getTradeHistory({ status: 'OPEN' });
+          
+          // Para cada trade, obtener precio actual
+          for (const trade of openTrades) {
+            const ticker = await binanceService.getTicker24H(trade.symbol);
+            if (ticker) {
+              positions.push({
+                symbol: trade.symbol,
+                amount: typeof trade.quantity === 'string' ? parseFloat(trade.quantity) : trade.quantity,
+                entryPrice: trade.entry,
+                currentPrice: parseFloat(ticker.lastPrice)
+              });
+            }
+          }
       
       return positions;
     } catch (error) {
@@ -925,3 +934,4 @@ Selecciona una operación:
     // Usar la función importada del módulo especializado
     return scanMarket(5); // Limitar a 5 resultados
   }
+}

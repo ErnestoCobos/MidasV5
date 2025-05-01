@@ -514,8 +514,10 @@ export class LunarCrushService {
 }
 
 // Crear instancia singleton (para uso en toda la aplicación)
+import { getEnv } from '../utils/env';
+
 export const lunarCrushService = new LunarCrushService({
-  apiKey: env.LUNAR_KEY,
+  apiKey: getEnv().LUNAR_KEY,
   cacheTTL: 300, // 5 minutos como recomendado
   maxRequestsPerMinute: 9 // 9 req/min para dejar margen (límite real es 10)
 });

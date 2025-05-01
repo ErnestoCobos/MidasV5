@@ -613,9 +613,11 @@ export class BinanceService {
 }
 
 // Crear instancia singleton del servicio
+import { getEnv } from '../utils/env';
+
 export const binanceService = new BinanceService({
-  apiKey: env.BINANCE_KEY,
-  apiSecret: env.BINANCE_SECRET,
+  apiKey: getEnv().BINANCE_KEY,
+  apiSecret: getEnv().BINANCE_SECRET,
   testnet: false, // Cambiar a true para usar testnet
   cacheTime: 60
 });

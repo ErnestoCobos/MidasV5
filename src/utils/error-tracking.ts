@@ -1,21 +1,28 @@
 import * as Sentry from '@sentry/node';
 import { logger } from './logging';
-import { env } from './env';
+import { env, getEnv } from './env';
 
 /**
  * Inicializa Sentry para el seguimiento de errores
  * Esta función debe llamarse al inicio de la aplicación
  */
 export function initSentry() {
-  if (!env.SENTRY_DSN) {
-    logger.warn('Sentry DSN no está configurado, el seguimiento de errores está desactivado');
+  try {
+    const config = getEnv();
+    if (!config.SENTRY_DSN) {
+      logger.warn('Sentry DSN no está configurado, el seguimiento de errores está desactivado');
+      return;
+    }
+
+    Sentry.init({
+      dsn: config.SENTRY_DSN,
+      environment: config.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    // If getEnv() fails, log the error and continue without Sentry
+    logger.warn('Error initializing Sentry, error tracking disabled');
     return;
   }
-
-  Sentry.init({
-    dsn: env.SENTRY_DSN,
-    environment: env.NODE_ENV || 'development'
-  });
   
   // Establecer tags globales
   Sentry.setTags({

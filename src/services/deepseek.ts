@@ -732,4 +732,6 @@ precios de entrada/salida, tamaño de posición y razonamiento.`;
 }
 
 // Crear instancia singleton para uso en toda la aplicación
-export const deepSeekService = new DeepSeekService(env.DEEPSEEK_API_KEY);
+import { getEnv } from '../utils/env';
+
+export const deepSeekService = new DeepSeekService(getEnv().DEEPSEEK_API_KEY);

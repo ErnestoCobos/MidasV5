@@ -81,6 +81,14 @@ try {
 
 export const env = envVars;
 
+// Función auxiliar para acceder a env de forma segura
+export function getEnv(): ReturnType<typeof envSchema.parse> {
+  if (!env) {
+    throw new Error('Environment variables not initialized');
+  }
+  return env;
+}
+
 // Exportar getters que son seguros para testing
 export const isDryRun = () => env?.DRY_RUN ?? true;
 export const isProduction = () => env?.NODE_ENV === 'production';

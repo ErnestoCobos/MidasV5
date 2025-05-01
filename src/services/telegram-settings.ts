@@ -4,23 +4,17 @@
 import { Scenes, Context } from 'telegraf';
 import { logger } from '../utils/logging';
 
-// Interfaz para la sesión específica del bot
-interface BotSession {
-  authenticated: boolean;
-  userId: number;
-  username: string;
-  notifications: {
-    signals: boolean;
-    trades: boolean;
-    portfolioUpdates: boolean;
-  };
-  currentSymbol?: string;
-}
+import { BotContext } from './telegram'; // Import BotContext from telegram.ts
 
-// Tipo para el contexto del bot
-interface BotContext extends Context {
-  session: BotSession;
-  scene: Scenes.SceneContextScene<BotContext>;
+// Extend BotSession interface from telegram.ts with advanced settings
+declare module './telegram' {
+  interface BotSession {
+    advancedSettings?: {
+      tradingMode?: string;
+      hasApiKeys?: boolean;
+      tradeLimit?: number;
+    }
+  }
 }
 
 /**

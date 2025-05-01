@@ -40,7 +40,7 @@ export async function scanMarket(maxResults: number = 5): Promise<MarketOpportun
     
     // Añadir algunos aleatorios para completar
     const remainingPairs = usdtPairs
-      .filter(pair => !popularPairs.includes(pair))
+      .filter((pair: string) => !popularPairs.includes(pair))
       .sort(() => 0.5 - Math.random())
       .slice(0, 10 - popularPairs.length);
     
