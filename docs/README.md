@@ -59,6 +59,9 @@ graph TD
 - [Architecture Overview](./explanations/architecture.md)
 - [API Reference](./reference/index.html)
 - [Test Coverage](./badges/coverage.svg)
+- [Telegram Bot Architecture](./telegram-hexagonal-architecture.md)
+- [Telegram Multithreading Guide](./telegram-multithreading-guide.md)
+- [Telegram Architecture Diagram](./telegram-architecture-diagram.md)
 
 ## Components Overview
 
@@ -79,3 +82,13 @@ graph TD
 4. **[Sistema de Feedback y Aprendizaje](./explanations/feedback-system.md)**
    - Recopilación de resultados de trading
    - Métricas de rendimiento por activo
+   
+5. **[Bot de Telegram con Arquitectura Hexagonal](./telegram-hexagonal-architecture.md)**
+   - Implementación de puertos y adaptadores
+   - Integración con sistema de multithreading
+   - Procesamiento paralelo de señales de trading
+
+6. **[Sistema de Multithreading](./telegram-multithreading-guide.md)**
+   - Worker threads para procesamiento intensivo
+   - Distribución de tareas según tipo y prioridad
+   - Escalado automático de workers

@@ -4,9 +4,44 @@ import { TradeSignal } from '../services/deepseek';
 import { TradeOperation } from '../services/trade-history';
 
 /**
+ * Interfaz común para repositorios de operaciones
+ * Garantiza que las implementaciones real y mock sean compatibles
+ */
+export interface TradeRepository {
+  createTables(): Promise<void>;
+  saveTrade(trade: TradeOperation): Promise<void>;
+  findTradeById(id: string): Promise<TradeOperation | null>;
+  findOpenTradeBySymbol(symbol: string): Promise<TradeOperation | null>;
+  findTrades(filters: {
+    symbol?: string;
+    status?: 'OPEN' | 'CLOSED' | 'CANCELLED';
+    strategyType?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<TradeOperation[]>;
+  addNoteToTrade(tradeId: string, note: string): Promise<boolean>;
+  addTagsToTrade(tradeId: string, tags: string[]): Promise<boolean>;
+  removeTagsFromTrade(tradeId: string, tags: string[]): Promise<boolean>;
+  getPerformanceStats(symbol?: string, days?: number): Promise<{
+    totalTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+    winRate: number;
+    averagePnl: number;
+    averagePnlPercent: number;
+    totalPnl: number;
+    bestTrade: number;
+    worstTrade: number;
+    openPositions: number;
+  }>;
+}
+
+/**
  * Repositorio para gestionar las operaciones de trading en la base de datos
  */
-export class TradeRepository {
+export class PostgresTradeRepository implements TradeRepository {
   
   /**
    * Crea las tablas necesarias para almacenar operaciones si no existen
@@ -418,4 +453,4 @@ export class TradeRepository {
 }
 
 // Instancia para uso en toda la aplicación
-export const tradeRepository = new TradeRepository();
+export const tradeRepository = new PostgresTradeRepository();

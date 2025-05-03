@@ -62,8 +62,29 @@ export class DatabaseService {
       const result = await this.query('SELECT NOW()');
       logger.info(`Conexión a PostgreSQL establecida correctamente: ${result.rows[0].now}`);
       return true;
-    } catch (error) {
-      logger.error({ error }, 'Error conectando a PostgreSQL');
+    } catch (error: any) {
+      // Formateamos el error para obtener información más útil para diagnóstico
+      const errorDetails = {
+        message: error?.message || 'Error desconocido en conexión',
+        code: error?.code || 'NO_CODE',
+        errno: error?.errno,
+        syscall: error?.syscall,
+        address: error?.address,
+        port: error?.port,
+        stack: (error?.stack || '').split('\n').slice(0, 3).join('\n')
+      };
+      
+      // Decidir nivel de log según el tipo de error
+      if (errorDetails.code === 'ECONNREFUSED') {
+        logger.warn({ error: errorDetails }, 'Error conectando a PostgreSQL: servidor no disponible');
+      } else if (errorDetails.code === 'ETIMEDOUT') {
+        logger.warn({ error: errorDetails }, 'Error conectando a PostgreSQL: tiempo de espera agotado');
+      } else if (errorDetails.message.includes('no pg_hba.conf entry')) {
+        logger.warn({ error: errorDetails }, 'Error conectando a PostgreSQL: falta entrada en pg_hba.conf');
+      } else {
+        logger.error({ error: errorDetails }, 'Error conectando a PostgreSQL');
+      }
+      
       return false;
     }
   }
@@ -155,4 +176,8 @@ export class DatabaseService {
 
 // Instancia global para uso en toda la aplicación
 // La configuración real se realiza durante la inicialización del sistema
-export const db = DatabaseService.getInstance();
+// Inicializamos con un mock si no hay configuración
+export const db = DatabaseService.getInstance({
+  connectionString: process.env.DATABASE_URL || '',
+  ssl: process.env.DATABASE_SSL === 'true'
+});

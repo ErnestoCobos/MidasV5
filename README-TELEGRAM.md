@@ -1,110 +1,130 @@
-# MidasTS Bot de Telegram
+# MidasTS - Bot de Telegram
 
-## Introducción
+## Configuración
 
-Esta integración permite controlar el sistema MidasTS a través de un bot de Telegram, ofreciendo una interfaz conversacional y móvil para monitorear el mercado de criptomonedas, recibir señales de trading y gestionar operaciones desde cualquier dispositivo.
+Para configurar el bot de Telegram, sigue estos pasos:
 
-## Configuración Rápida
-
-La configuración ya está completa con los siguientes parámetros en tu archivo `.env`:
+1. Crea un bot en Telegram utilizando [@BotFather](https://t.me/BotFather) y obtén tu token
+2. Copia el archivo `.env.example` a `.env` y configura las siguientes variables:
 
 ```
-TELEGRAM_BOT_TOKEN=7922915922:AAGjMAGW9u-Qm9_wah1MVMuXRvBvum4KwcU
-TELEGRAM_AUTHORIZED_USERS=1336702235
-TELEGRAM_ADMIN_USERS=1336702235
+# Configuración del Bot
+TELEGRAM_BOT_TOKEN=tu_token_de_bot_aquí
+TELEGRAM_AUTHORIZED_USERS=id1,id2,id3
+TELEGRAM_ADMIN_USERS=id_admin1,id_admin2
+TELEGRAM_ACCESS_CODE=código_opcional_de_acceso
+
+# Configuración de Multithreading
+USE_TASK_MANAGER_FOR_TELEGRAM=true
+MAX_THREAD_WORKERS=4
+MAX_CLUSTER_WORKERS=2
+MAX_CHILD_PROCESSES=2
 ```
 
-## ¿Cómo Iniciar el Bot?
+* `TELEGRAM_BOT_TOKEN`: Token proporcionado por BotFather
+* `TELEGRAM_AUTHORIZED_USERS`: IDs de usuarios autorizados a usar el bot (separados por comas)
+* `TELEGRAM_ADMIN_USERS`: IDs de administradores que recibirán notificaciones especiales
+* `TELEGRAM_ACCESS_CODE`: Código opcional para que nuevos usuarios puedan registrarse
+* `USE_TASK_MANAGER_FOR_TELEGRAM`: Activa el procesamiento multihilo para señales de trading
+* `MAX_THREAD_WORKERS`: Número máximo de worker threads para procesamiento paralelo
+* `MAX_CLUSTER_WORKERS`: Número máximo de workers en el cluster
+* `MAX_CHILD_PROCESSES`: Número máximo de procesos hijo
 
-Ahora tienes varias formas de iniciar el bot:
+## Ejecución
 
-### Opción 1: Comando Dedicado (Recomendado)
+Puedes iniciar el bot con:
+
 ```bash
-node src/index.js telegram
-```
+# Versión con arquitectura hexagonal y multithreading
+npm run telegram-bot-adapter
 
-### Opción 2: Compatibilidad con Versiones Anteriores
-```bash
+# Versión original (legado)
 npm run telegram-bot
 ```
 
-### Opción 3: Integrado con Comandos de Trading
-```bash
-node src/index.js trade --with-telegram --notify
-node src/index.js micro-trade --with-telegram --notify
-```
+## Funcionalidades
 
-El servicio verificará las conexiones a las APIs necesarias e iniciará el bot. Cuando se utiliza la opción `--notify`, se enviará una notificación a todos los usuarios autorizados.
+El bot de Telegram de MidasTS ofrece las siguientes funcionalidades:
 
-## Comandos Disponibles
+### Comandos básicos
+- `/start` - Inicia el bot e inicia sesión
+- `/help` - Muestra mensaje de ayuda
+- `/status` - Muestra el estado del sistema
+- `/menu` - Muestra el menú principal
 
-Una vez iniciado el bot, puedes interactuar con él en Telegram usando los siguientes comandos:
+### Comandos de trading
+- `/price [símbolo]` - Consulta precio actual (ej: `/price BTC`)
+- `/signal [símbolo]` - Solicita señal de trading con análisis DeepSeek AI
+- `/scan` - Escanea el mercado para oportunidades de trading
 
-- `/start` - Iniciar o reiniciar el bot
-- `/help` - Mostrar los comandos disponibles
-- `/status` - Verificar el estado del sistema
-- `/price [símbolo]` - Consultar el precio actual (ej: `/price BTC`)
-- `/signal [símbolo]` - Solicitar una señal de trading
-- `/scan` - Escanear el mercado en busca de oportunidades
-- `/portfolio` - Ver tu portafolio actual
-- `/settings` - Ajustar tu configuración de notificaciones
-
-## Interfaz de Usuario
-
-El bot utiliza menús interactivos con botones para facilitar la navegación. Después de cada comando principal, se mostrarán opciones relevantes mediante botones que puedes pulsar para realizar acciones adicionales.
-
-### Ejemplo de Flujo
-
-1. Ejecutar `/price BTC`
-2. Recibir información actual sobre Bitcoin
-3. Usar los botones para:
-   - Ver análisis técnico
-   - Solicitar señal de trading
-   - Establecer alertas de precio
-
-## Personalización
-
-Puedes personalizar las siguientes configuraciones:
-
-- **Notificaciones**: Activar/desactivar notificaciones para señales de trading, ejecución de órdenes y actualizaciones de portafolio
-- **Alertas de precio**: Establecer alertas cuando un activo alcance cierto precio
-- **Modo de trading**: Configurar el estilo de operaciones (conservador/agresivo)
-
-## Solución de Problemas
-
-Si encuentras problemas al iniciar o usar el bot:
-
-1. **El bot no responde:**
-   - Asegúrate de que hayas iniciado una conversación con el bot en Telegram
-   - Verifica que tu ID de Telegram esté en la lista de usuarios autorizados
-
-2. **Errores de conexión:**
-   - Verifica la configuración de las APIs en el archivo `.env`
-   - Asegúrate de que tienes acceso a internet
-
-3. **Comandos que no funcionan:**
-   - Algunos comandos dependen de servicios específicos (Binance, LunarCrush)
-   - Revisa los logs para identificar errores específicos
-
-## Personalización Avanzada
-
-Para personalizar aún más el bot, puedes modificar los siguientes archivos:
-
-- `src/services/telegram.ts` - Servicio principal del bot
-- `src/services/telegram-settings.ts` - Escena de configuración
-- `src/services/telegram-scan.ts` - Funcionalidad de escaneo de mercado
+### Características
+- **Análisis técnico**: RSI, EMA, Bollinger Bands, soportes/resistencias
+- **Señales de AI**: Integración con DeepSeek para obtener señales de trading
+- **Escaneo de mercado**: Identifica las mejores oportunidades en tiempo real
+- **Menú interactivo**: Interfaz fácil de usar con botones integrados
+- **Procesamiento multihilo**: Generación de señales utilizando worker threads para mejor rendimiento
 
 ## Seguridad
 
-- El bot solo responde a usuarios específicamente autorizados
-- Las operaciones críticas requieren confirmación adicional
-- Se recomienda no compartir el token del bot o tus IDs de usuario
+El bot cuenta con múltiples capas de seguridad:
 
-## Mejoras Futuras
+1. Lista de usuarios autorizados
+2. Sistema de código de acceso opcional
+3. Separación de usuarios normales y administradores
 
-Algunas mejoras que podrías implementar:
+## Arquitectura
 
-- Gráficos en tiempo real dentro de Telegram
-- Sistema de autenticación por código de un solo uso
-- Integración con más exchanges y fuentes de datos
-- Alertas personalizadas basadas en indicadores técnicos
+El bot está implementado siguiendo el patrón de arquitectura hexagonal (puertos y adaptadores):
+
+```
+src/
+  ├── ports/
+  │   └── inbound/
+  │       ├── telegram-service-port.ts  # Interfaz para el servicio de Telegram
+  │       ├── task-manager-port.ts      # Interfaz para gestión de tareas
+  │       └── task-queue-port.ts        # Interfaz para cola de tareas
+  ├── adapters/
+  │   └── inbound/
+  │       ├── telegram-adapter.ts          # Implementación hexagonal del bot
+  │       ├── telegram-signal-tasks.ts     # Integración con sistema de tareas
+  │       ├── task-manager.ts              # Gestor de tareas para multithreading
+  │       └── in-memory-task-queue.ts      # Cola de tareas en memoria
+  ├── core/
+  │   ├── domain/
+  │   │   ├── task.ts                      # Entidad de tarea
+  │   │   ├── worker.ts                    # Entidad de worker
+  │   │   └── worker-pool.ts               # Grupo de workers
+  │   └── application/
+  │       ├── task-distribution.ts         # Distribución de tareas a workers
+  │       ├── worker-management.ts         # Gestión de worker threads
+  │       └── monitoring-service.ts        # Monitoreo del sistema
+  ├── services/
+  │   ├── telegram-settings.ts             # Escena de configuración
+  │   ├── telegram-scan.ts                 # Escaner de mercado
+  │   └── telegram-signal.ts               # Integración con DeepSeek AI
+  └── workers/
+      └── worker-thread.js                 # Worker para procesamiento paralelo
+```
+
+## Sistema de Multithreading
+
+El bot de Telegram está integrado con un sistema de multithreading que permite:
+
+1. **Procesamiento paralelo**: Las operaciones intensivas como generación de señales y escaneo de mercado se ejecutan en worker threads separados, liberando el hilo principal.
+
+2. **Mejor rendimiento**: Múltiples señales pueden generarse simultáneamente sin bloquear la interfaz del bot.
+
+3. **Escalabilidad**: El sistema puede escalar horizontalmente según la carga del sistema.
+
+4. **Recuperación ante fallos**: Los workers pueden reiniciarse automáticamente si fallan.
+
+Para más detalles sobre la arquitectura, consulta el archivo de documentación [docs/telegram-hexagonal-architecture.md](docs/telegram-hexagonal-architecture.md).
+
+## Personalización
+
+Puedes personalizar el comportamiento del bot editando los siguientes archivos:
+
+- `src/adapters/inbound/telegram-adapter.ts`: Implementación completa del bot (arquitectura hexagonal)
+- `src/adapters/inbound/telegram-signal-tasks.ts`: Configuración del procesamiento de señales
+- `src/services/telegram-signal.ts`: Lógica de generación de señales
+- `src/services/telegram-scan.ts`: Configuración de escaneo de mercado

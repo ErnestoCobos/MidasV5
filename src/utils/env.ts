@@ -31,7 +31,23 @@ const envSchema = z.object({
   // Variables para TimescaleDB
   USE_TIMESCALE: z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
   TIMESCALE_CHUNK_INTERVAL_DAYS: z.string().default('1').transform(val => parseInt(val, 10)),
-  TIMESCALE_COMPRESSION_AFTER_DAYS: z.string().default('7').transform(val => parseInt(val, 10))
+  TIMESCALE_COMPRESSION_AFTER_DAYS: z.string().default('7').transform(val => parseInt(val, 10)),
+  
+  // Variables para Telegram Bot
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_AUTHORIZED_USERS: z.string().optional().transform(val => 
+    val ? val.split(',').map(id => parseInt(id.trim())) : []
+  ),
+  TELEGRAM_ADMIN_USERS: z.string().optional().transform(val => 
+    val ? val.split(',').map(id => parseInt(id.trim())) : []
+  ),
+  TELEGRAM_ACCESS_CODE: z.string().optional(),
+  
+  // Variables para sistema de tareas
+  USE_TASK_MANAGER_FOR_TELEGRAM: z.enum(['true', 'false']).default('true').transform(val => val === 'true'),
+  MAX_THREAD_WORKERS: z.string().default('4').transform(val => parseInt(val, 10)),
+  MAX_CLUSTER_WORKERS: z.string().default('2').transform(val => parseInt(val, 10)),
+  MAX_CHILD_PROCESSES: z.string().default('2').transform(val => parseInt(val, 10))
 });
 
 // Función para validar y extraer variables de entorno

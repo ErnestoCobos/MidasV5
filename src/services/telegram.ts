@@ -2,7 +2,7 @@ import { Telegraf, Context, Scenes, session } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { logger } from '../utils/logging';
 import { env } from '../utils/env';
-import { deepSeekService, TradeSignal } from './deepseek';
+import { deepSeekService, TradeSignal, DeepSeekService } from './deepseek';
 import { binanceService } from './binance';
 import { marketDataService } from './market-data';
 import { tradeHistoryService } from './trade-history';
@@ -12,6 +12,7 @@ import { db } from './database';
 // Import telegram components
 import { createSettingsScene } from './telegram-settings';
 import { scanMarket, MarketOpportunity } from './telegram-scan';
+import { getTradeSignal, formatSignalMessage, scanMultipleCoins, formatMultipleSignalsMessage } from './telegram-signal';
 
 // Import types extension
 import '../utils/env-extend';
@@ -462,7 +463,174 @@ Para más información, visita: https://github.com/usuario/midasTS
       }
     });
     
+    // Comando /signal - Obtener señal de trading
+    this.bot.command('signal', async (ctx: Context) => {
+      // Convertir a BotContext para manejar la sesión
+      const botCtx = ctx as BotContext;
+      // Verificar si el mensaje tiene texto y extraer las partes
+      const messageText = 'text' in ctx.message! ? ctx.message.text : '';
+      const parts = messageText?.split(' ');
+      
+      // Si no se especifica símbolo, escanear múltiples monedas
+      if (!parts || parts.length < 2) {
+        await ctx.reply('🔍 <b>Escaneando el mercado en busca de oportunidades...</b>\nEsto tomará un momento.', {
+          parse_mode: 'HTML'
+        });
+        
+        try {
+          // Obtener señales para múltiples monedas (limitado a 8 para no sobrecargar)
+          const results = await scanMultipleCoins(8, 1000);
+          
+          if (results.length === 0) {
+            await ctx.reply('❌ No se pudieron generar señales de trading. Intenta nuevamente más tarde.');
+            return;
+          }
+          
+          // Formatear mensaje con múltiples señales
+          const signalsMessage = formatMultipleSignalsMessage(results);
+          
+          // Generar botones para cada señal de compra/venta
+          const actionableSignals = results
+            .filter(r => r.signal.action !== 'HOLD')
+            .slice(0, 5); // Limitar a 5 botones
+          
+          let inlineKeyboard;
+          if (actionableSignals.length > 0) {
+            inlineKeyboard = {
+              inline_keyboard: [
+                ...actionableSignals.map(result => [{
+                  text: `📊 Detalles ${result.symbol}`,
+                  callback_data: `signal_${result.symbol}`
+                }]),
+                [{ 
+                  text: '🔄 Actualizar Señales', 
+                  callback_data: 'refresh_all_signals' 
+                }]
+              ]
+            };
+          } else {
+            inlineKeyboard = {
+              inline_keyboard: [
+                [{ 
+                  text: '🔄 Actualizar Señales', 
+                  callback_data: 'refresh_all_signals' 
+                }]
+              ]
+            };
+          }
+          
+          // Enviar mensaje con todas las señales
+          await ctx.reply(signalsMessage, { 
+            parse_mode: 'HTML',
+            reply_markup: inlineKeyboard
+          });
+        } catch (error) {
+          logger.error({ error }, 'Error al escanear múltiples monedas');
+          await ctx.reply('❌ Error al escanear el mercado. Intenta nuevamente más tarde.');
+        }
+        return;
+      }
+      
+      // Si se especifica símbolo, generar señal individual
+      let symbol = parts[1].toUpperCase();
+      // Añadir USDT si no se especifica par completo
+      if (!symbol.includes('USDT') && !symbol.includes('/')) {
+        symbol = `${symbol}USDT`;
+      }
+      
+      try {
+        // Enviar mensaje de espera
+        const waitMessage = await ctx.reply('🔮 <b>Generando señal de trading...</b>\nEsto puede tomar hasta 15 segundos.', {
+          parse_mode: 'HTML'
+        });
+        
+        // Obtener señal de trading
+        const signal = await getTradeSignal(symbol, 1000); // Capital predeterminado de 1000 USD
+        
+        if (!signal) {
+          await ctx.reply(`❌ No se pudo generar señal para ${symbol}. Comprueba que el símbolo sea válido.`);
+          return;
+        }
+        
+        // Guardar símbolo actual en sesión para uso posterior
+        botCtx.session.currentSymbol = symbol;
+        
+        // Formatear mensaje de señal
+        const signalMessage = formatSignalMessage(symbol, signal);
+        
+        // Opciones inline para acciones adicionales
+        const inlineKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📊 Ver Precio', callback_data: `price_${symbol}` },
+              { text: '💰 Ejecutar', callback_data: `execute_${signal.action.toLowerCase()}_${symbol}` }
+            ],
+            [
+              { text: '🔄 Actualizar Señal', callback_data: `refresh_signal_${symbol}` }
+            ]
+          ]
+        };
+        
+        // Enviar mensaje con la señal
+        await ctx.reply(signalMessage, { 
+          parse_mode: 'HTML',
+          reply_markup: inlineKeyboard
+        });
+      } catch (error) {
+        logger.error({ error, symbol }, 'Error al obtener señal de trading');
+        await ctx.reply(`❌ Error al generar señal para ${symbol}. Intenta nuevamente más tarde.`);
+      }
+    });
+    
     // Implementaciones de otros comandos...
+    
+    // Comando /scan - Escanear mercado para oportunidades
+    this.bot.command('scan', async (ctx: Context) => {
+      try {
+        await ctx.reply('🔍 <b>Escaneando el mercado en busca de oportunidades...</b>\nEsto puede tomar un momento.', {
+          parse_mode: 'HTML'
+        });
+        
+        // Obtener oportunidades de mercado usando la función del módulo
+        const opportunities = await scanMarket(5);
+        
+        if (!opportunities || opportunities.length === 0) {
+          await ctx.reply('❌ No se encontraron oportunidades que cumplan los criterios en este momento. Intenta más tarde.');
+          return;
+        }
+        
+        // Preparar mensaje con las oportunidades
+        let scanMessage = '<b>✅ Escaneo de mercado completado</b>\n\n';
+        scanMessage += '<b>🔝 Mejores oportunidades encontradas:</b>\n\n';
+        
+        opportunities.forEach((opportunity, index) => {
+          scanMessage += `<b>${index + 1}. ${opportunity.symbol}</b> - $${opportunity.price.toFixed(4)}\n`;
+          scanMessage += `📊 Score: ${(opportunity.score * 100).toFixed(1)}%\n`;
+          scanMessage += `🌟 Galaxy Score: ${opportunity.galaxyScore}\n`;
+          scanMessage += `${opportunity.recommendation}\n\n`;
+        });
+        
+        scanMessage += `<i>Actualizado: ${new Date().toLocaleString()}</i>`;
+        
+        // Preparar botones para ver detalles o analizar más a fondo
+        const inlineKeyboard = {
+          inline_keyboard: opportunities.map(opp => {
+            return [{ 
+              text: `📊 Ver ${opp.symbol}`, 
+              callback_data: `price_${opp.symbol}` 
+            }];
+          })
+        };
+        
+        await ctx.reply(scanMessage, { 
+          parse_mode: 'HTML',
+          reply_markup: inlineKeyboard
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error al escanear mercado');
+        await ctx.reply('❌ Error al escanear el mercado. Intenta nuevamente más tarde.');
+      }
+    });
   }
 
   /**
@@ -601,6 +769,99 @@ Para más información, visita: https://github.com/usuario/midasTS
         logger.error({ error, symbol }, 'Error al obtener análisis técnico');
         await ctx.reply('❌ Error al obtener análisis técnico. Intenta nuevamente más tarde.');
       }
+    });
+
+    // Callback para actualizar señal de trading
+    this.bot.action(/refresh_signal_(.+)/, async (ctx) => {
+      const callbackData = (ctx.callbackQuery as any)?.data;
+      const match = callbackData?.match(/refresh_signal_(.+)/);
+      const symbol = match ? match[1] : '';
+      
+      await ctx.answerCbQuery(`Actualizando señal para ${symbol}...`);
+      
+      try {
+        // Obtener una nueva señal
+        const signal = await getTradeSignal(symbol, 1000);
+        
+        if (!signal) {
+          await ctx.reply(`❌ No se pudo actualizar la señal para ${symbol}.`);
+          return;
+        }
+        
+        // Formatear el mensaje con la nueva señal
+        const signalMessage = formatSignalMessage(symbol, signal);
+        
+        // Opciones inline actualizadas
+        const inlineKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '📊 Ver Precio', callback_data: `price_${symbol}` },
+              { text: '💰 Ejecutar', callback_data: `execute_${signal.action.toLowerCase()}_${symbol}` }
+            ],
+            [
+              { text: '🔄 Actualizar Señal', callback_data: `refresh_signal_${symbol}` }
+            ]
+          ]
+        };
+        
+        // Intentar editar el mensaje actual o enviar uno nuevo
+        try {
+          await ctx.editMessageText(signalMessage, { 
+            parse_mode: 'HTML',
+            reply_markup: inlineKeyboard
+          });
+        } catch (error) {
+          // Si no se puede editar, enviar un nuevo mensaje
+          await ctx.reply(signalMessage, { 
+            parse_mode: 'HTML',
+            reply_markup: inlineKeyboard
+          });
+        }
+      } catch (error) {
+        logger.error({ error, symbol }, 'Error al actualizar señal de trading');
+        await ctx.reply('❌ Error al actualizar la señal. Intenta nuevamente más tarde.');
+      }
+    });
+    
+    // Callback para actualizar todas las señales
+    this.bot.action('refresh_all_signals', async (ctx) => {
+      await ctx.answerCbQuery('Actualizando señales de todo el mercado...');
+      
+      // Simular comando /signal sin parámetros
+      await ctx.reply('/signal');
+      await this.bot.handleUpdate({
+        update_id: 0,
+        message: {
+          message_id: 0,
+          date: Math.floor(Date.now() / 1000),
+          chat: ctx.chat!,
+          from: ctx.from!,
+          text: '/signal'
+        }
+      } as any);
+    });
+    
+    // Callback para ejecutar órdenes
+    this.bot.action(/execute_(buy|sell)_(.+)/, async (ctx) => {
+      const callbackData = (ctx.callbackQuery as any)?.data;
+      const match = callbackData?.match(/execute_(buy|sell)_(.+)/);
+      
+      if (!match || match.length < 3) {
+        await ctx.answerCbQuery('Error: Datos de callback inválidos');
+        return;
+      }
+      
+      const action = match[1].toUpperCase();
+      const symbol = match[2];
+      
+      await ctx.answerCbQuery(`Preparando orden de ${action} para ${symbol}...`);
+      
+      // En una implementación real, aquí se ejecutaría la orden a través de Binance
+      // Por ahora, simplemente mostrar la interfaz de la escena de trading
+      const botCtx = ctx as BotContext;
+      botCtx.session.currentSymbol = symbol;
+      
+      await ctx.scene.enter('trade');
     });
   }
 

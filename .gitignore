@@ -59,3 +59,5 @@ simple-test.js
 
 # Testing
 /coverage
+
+**/.claude/settings.local.json

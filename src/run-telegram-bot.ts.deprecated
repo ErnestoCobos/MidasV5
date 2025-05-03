@@ -1,15 +1,13 @@
 /**
- * DEPRECATED: Please use run-telegram-bot-adapter.ts instead
+ * DEPRECATED: This file is kept for reference purposes only.
  * 
- * This script starts the Telegram bot with database initialization, but it uses
- * the older TelegramService instead of the new TelegramAdapter with hexagonal architecture.
+ * The functionality has been migrated to run-telegram-bot-adapter.ts
+ * which uses the hexagonal architecture approach with the TelegramAdapter.
  * 
- * For the new implementation with multithreading support, use:
- * npm run telegram-bot-adapter
- * 
- * This file is kept for backwards compatibility and will be removed in future versions.
+ * Please use "npm run telegram-bot-adapter" instead of "npm run telegram-bot".
  */
 
+// Original content moved from run-telegram-bot.ts
 import 'dotenv/config';
 import { logger } from './utils/logging';
 import { TelegramService } from './services/telegram';
@@ -18,23 +16,23 @@ import { DatabaseService } from './services/database';
 import { tradeRepository } from './repositories/trade-repository';
 import { getEnv } from './utils/env';
 
-// Validar que el token de Telegram esté configurado
+// Validate that the token of Telegram is configured
 if (!process.env.TELEGRAM_BOT_TOKEN) {
   logger.error('TELEGRAM_BOT_TOKEN no está configurado en el archivo .env');
   process.exit(1);
 }
 
-// Validar que hay usuarios autorizados
+// Validate that there are authorized users
 if (!process.env.TELEGRAM_AUTHORIZED_USERS) {
   logger.warn('TELEGRAM_AUTHORIZED_USERS no está configurado. Solo los administradores podrán usar el bot.');
 }
 
 async function main() {
   try {
-    // 1. Inicializar la base de datos (crear tablas y migraciones)
+    // 1. Initialize the database (create tables and migrations)
     logger.info('Inicializando base de datos y tablas...');
     
-    // Configurar instancia de base de datos antes de inicializar
+    // Configure database instance before initialization
     const config = getEnv();
     DatabaseService.getInstance({
       connectionString: config.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/midasts',
@@ -43,7 +41,7 @@ async function main() {
       idleTimeoutMillis: config.DATABASE_IDLE_TIMEOUT
     });
     
-    // 1. Inicializar base de datos
+    // 1. Initialize database
     let dbInitialized = false;
     try {
       dbInitialized = await initializeDatabase();
@@ -58,25 +56,25 @@ async function main() {
       logger.warn('El bot funcionará con funcionalidad limitada sin persistencia');
     }
     
-    // 2. Inicializar y arrancar el servicio de Telegram
+    // 2. Initialize and start the Telegram service
     logger.info('Inicializando el bot de Telegram...');
     const telegramService = new TelegramService();
     
-    // 3. Configurar manejo de señales para cierre controlado
+    // 3. Configure signal handling for controlled shutdown
     process.once('SIGINT', () => telegramService.stop('SIGINT'));
     process.once('SIGTERM', () => telegramService.stop('SIGTERM'));
     
-    // 4. Iniciar el bot
+    // 4. Start the bot
     await telegramService.start();
     
-    // 5. Enviar notificación de inicio a administradores
+    // 5. Send startup notification to administrators
     const adminUsers = process.env.TELEGRAM_ADMIN_USERS ? 
       process.env.TELEGRAM_ADMIN_USERS.split(',').map(id => parseInt(id.trim())) : [];
     
     if (adminUsers.length > 0) {
       await telegramService.sendNotificationToAll('🤖 Bot de MidasTS iniciado correctamente.');
       
-      // Añadir información de base de datos al mensaje
+      // Add database information to the message
       if (dbInitialized) {
         await telegramService.sendNotificationToAll('✅ Base de datos inicializada correctamente');
       } else {
@@ -91,7 +89,7 @@ async function main() {
   }
 }
 
-// Ejecutar la función principal
+// Execute the main function
 main().catch(error => {
   logger.fatal({ error }, 'Error fatal al iniciar el bot de Telegram');
   process.exit(1);

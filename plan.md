@@ -1,256 +1,284 @@
-#  Plan de Automatización para MidasTS
-# Plan de Automatización para MidasTS
+# Plan de Implementación: Sistema de Multithreading con Arquitectura Hexagonal
 
-## 1. Resumen del Sistema
+## 1. Contexto y Objetivos
 
-MidasTS es una plataforma avanzada de trading de criptomonedas que integra múltiples servicios:
+El propósito de este documento es detallar el plan de implementación de una arquitectura de multithreading en Node.js que cumpla con principios de arquitectura hexagonal y clean architecture. El sistema permitirá:
 
-- **Trading algorítmico** con estrategias adaptativas (micro-capital, growth)
-- **Integración con APIs externas**: Binance, LunarCrush, DeepSeek
-- **Bot de Telegram** para monitoreo y control desde dispositivos móviles
-- **Sistema de escaneo de mercado** para identificar oportunidades
-- **Gestión de portafolio** y tracking de operaciones
-- **Gestión de riesgo** con parámetros adaptativos
+- Aprovechar múltiples CPUs mediante Worker Threads, Cluster y Child Process
+- Mantener una clara separación entre dominio, aplicación y adaptadores
+- Seguir principios de arquitectura limpia con puertos e interfaces bien definidos
+- Implementar paradigmas mixtos: OOP para dominio/adaptadores y FP para análisis/matemáticas
 
-## 2. Arquitectura Actual
+## 2. Estado Actual del Proyecto
 
-El sistema está estructurado en los siguientes componentes:
+Actualmente, el proyecto cuenta con:
 
-- **CLI Principal** (`index.ts`): Centro de control que gestiona comandos y opciones
-- **Servicios**:
-  - `binance.ts`: Conexión con Binance para datos y ejecución de órdenes
-  - `lunarcrush.ts`: Análisis de sentimiento social para criptomonedas
-  - `deepseek.ts`: Servicio de decisiones basado en IA
-  - `market-data.ts`: Agregación de datos de mercado
-  - `correlation.ts`: Análisis de correlación entre activos
-  - `telegram.ts`: Integración con Telegram para notificaciones y control
-  - `telegram-settings.ts`: Gestión de configuraciones por usuario
-  - `telegram-scan.ts`: Escaneo de mercado a través de Telegram
-  - `database.ts`: Persistencia de datos
-  - `feedback-store.ts`: Almacenamiento de feedback para optimización
-- **Estrategias**:
-  - `micro-capital.ts`: Optimizada para capital pequeño (<$100)
-  - `risk-management.ts`: Gestión de riesgo adaptativa
-- **Utilitarios**:
-  - `logging.ts`: Sistema de logs
-  - `env.ts`: Gestión de variables de entorno
-  - `circuit-breaker.ts`: Prevención de fallos en cascada
-  - `worker-pool.ts`: Ejecución paralela de tareas
+- Estructura base para un sistema de trading algorítmico
+- Utilidades iniciales en `src/utils/worker-pool.ts` y `src/utils/worker-runner.js`
+- Una estructura de directorios que necesita ser expandida para soportar la nueva arquitectura
 
-## 3. Funcionalidades Automatizadas
+## 3. Diseño Arquitectónico
 
-### 3.1 Ejecución de Órdenes
-- ✅ Ejecución automática de órdenes de compra y venta en Binance
-- ✅ Soporte para trailing stops adaptativos
-- ✅ Cálculo dinámico de tamaños de posición según capital disponible
+### 3.1 Estructura de Directorios Propuesta
 
-### 3.2 Análisis de Mercado
-- ✅ Obtención y procesamiento de datos de mercado en tiempo real
-- ✅ Cálculo automático de indicadores técnicos (RSI, EMA, Bollinger Bands)
-- ✅ Análisis de sentimiento social vía LunarCrush
-- ✅ Identificación de soportes y resistencias
+La arquitectura seguirá esta estructura:
 
-### 3.3 Toma de Decisiones
-- ✅ Sistema automatizado de toma de decisiones con DeepSeek
-- ✅ Evaluación multi-etapa para generar señales de trading
-- ✅ Ajuste de parámetros según modo de operación (conservador/crecimiento)
+```
+src/
+├── core/
+│   ├── domain/        # Entidades y objetos de valor
+│   ├── application/   # Casos de uso e interacciones
+│   ├── analysis/      # Funciones puras para análisis (FP)
+│   └── math/          # Operaciones matemáticas puras (FP)
+├── ports/
+│   ├── inbound/       # Interfaces para entrada (API, CLI)
+│   └── outbound/      # Interfaces para adaptadores externos
+├── adapters/
+│   ├── inbound/       # Implementaciones de puertos de entrada
+│   └── outbound/      # Implementaciones de puertos de salida
+├── workers/           # Scripts para workers
+└── infrastructure/    # Wiring, DI, config
+```
 
-### 3.4 Integración con Telegram
-- ✅ Inicialización automática del bot junto con servicios de trading
-- ✅ Notificaciones de inicio de sistema
-- ✅ Comandos para consultas básicas (precio, estado, ayuda)
-- ✅ Envío de señales de trading a usuarios autorizados
+### 3.2 Core Domain (Entidades y Objetos de Valor)
 
-### 3.5 Gestión de Riesgo
-- ✅ Cálculo adaptativo de stop-loss y take-profit
-- ✅ Análisis multi-timeframe para confirmación de tendencias
-- ✅ Validación de condiciones de mercado favorables
+Las principales entidades del dominio incluyen:
 
-### 3.6 Gestión Básica de Portafolio
-- ✅ Visualización del portafolio actual a través de Telegram
-- ✅ Cálculo de valor total y PnL de posiciones abiertas
-- ✅ Estrategia adaptativa basada en tamaño de capital (micro, growth)
-- ✅ Optimización de Kelly para tamaños de posición (implementación básica)
+1. **Task**: Representa una unidad de trabajo procesable
+   - Propiedades: id, payload, type, priority, status, result, error, etc.
+   - Estados: pending, processing, completed, failed
+   - Métodos: markAsProcessing(), complete(), fail(), reset()
 
-### 3.7 Funcionalidades para Entorno Distribuido
-- ✅ Sistema de worker pool para paralelización de tareas
-- ✅ Gestión de errores con circuit breaker para evitar cascadas de fallos
-- ✅ Arquitectura modular separada en servicios independientes
-- ✅ Logging estructurado compatible con sistemas de agregación
+2. **Worker**: Representa un trabajador (thread, cluster node, child process)
+   - Propiedades: id, type, processId, status, metrics, etc.
+   - Estados: idle, busy, starting, terminated, failed
+   - Métodos: assignTask(), completeTask(), updateMetrics(), etc.
 
-## 4. Oportunidades de Automatización
+3. **WorkerPool**: Gestión de grupos de workers
+   - Propiedades: id, type, maxSize, minSize, workers
+   - Métodos: addWorker(), removeWorker(), getAvailableWorker(), etc.
 
-### 4.1 Escaneo Periódico de Mercado
-- ❌ Escaneo automático programado del mercado
-- ❌ Notificación automática de mejores oportunidades
-- ❌ Generación de informes periódicos de oportunidades
+### 3.3 Core Analysis y Math (Funciones Puras)
 
-### 4.2 Rotación de Activos
-- ❌ Rotación automática de pares de trading según rendimiento
-- ❌ Seguimiento automático de mejores oportunidades
-- ❌ Ajuste dinámico de la cartera según condiciones de mercado
+Módulos de funciones puras para:
 
-### 4.3 Optimización de Estrategias
-- ❌ Ajuste automático de parámetros basado en rendimiento histórico
-- ❌ Backtesting automático de ajustes de estrategia
-- ❌ Sistema de feedback con aprendizaje continuo
+1. **task-scheduling.ts**:
+   - rankWorkersByLoad(): Ordena workers por carga y disponibilidad
+   - prioritizeTasks(): Prioriza tareas por criterios múltiples
+   - matchTasksToWorkers(): Empareja óptimamente tareas con workers
 
-### 4.4 Monitoreo y Recuperación
-- ❌ Monitoreo continuo de estado del sistema
-- ❌ Recuperación automática ante fallos de APIs
-- ❌ Reinicio de servicios caídos
-- ❌ Sincronización estado Binance-DB local
+2. **performance-metrics.ts**:
+   - calculateThroughput(): Calcula rendimiento de tareas por unidad de tiempo
+   - calculateAverageLatency(): Calcula latencia promedio de tareas
+   - calculatePoolUtilization(): Mide utilización de recursos por pool
+   - detectStalledWorkers(): Identifica workers potencialmente bloqueados
 
-### 4.5 Informes y Análisis
-- ❌ Generación automática de informes de rendimiento
-- ❌ Envío programado de estadísticas de trading
-- ❌ Análisis de patrones de éxito/fracaso
+### 3.4 Puertos e Interfaces
 
-### 4.6 Alertas Avanzadas
-- ❌ Alertas en condiciones extraordinarias de mercado
-- ❌ Notificaciones de cambios bruscos en sentimiento social
-- ❌ Alertas de discrepancias en correlaciones de activos
+#### Puertos de Entrada (Inbound)
 
-### 4.7 Mantenimiento
-- ❌ Respaldo automático de la base de datos
-- ❌ Limpieza de datos históricos antiguos
-- ❌ Verificación de actualizaciones del sistema
+1. **TaskManagerPort**: Gestión de tareas desde la API
+   - submitTask(): Envía una nueva tarea
+   - getTask(): Obtiene información sobre una tarea
+   - cancelTask(): Cancela una tarea
+   - getTasks(): Lista todas las tareas con filtros
+   - getSystemStatus(): Obtiene estado del sistema
 
-### 4.8 Gestión Avanzada de Portafolio
-- ❌ Sistema de diversificación automática entre 3-7 activos simultáneos
-- ❌ Algoritmo avanzado de balanceo dinámico basado en rendimiento
-- ❌ Rotación automatizada hacia activos con mejor momentum
-- ✅ Optimización básica de tamaño de posiciones mediante algoritmo Kelly
-- ❌ Capitalización compuesta con reinversión automática de ganancias
+2. **TaskQueuePort**: Cola de tareas a procesar
+   - enqueue(): Añade tarea a la cola
+   - dequeue(): Obtiene siguiente tarea según prioridad
+   - peek(): Consulta sin remover
+   - remove(): Elimina una tarea
+   - size(): Obtiene el tamaño actual
 
-### 4.9 Despliegue en Kubernetes
-- ❌ Containerización de servicios con Docker
-- ❌ Manifiestos Kubernetes para cada componente
-- ❌ Arquitectura escalable horizontalmente
-- ❌ Gestión de secretos centralizada con Kubernetes Secrets
-- ❌ Monitoreo distribuido con Prometheus y Grafana
+#### Puertos de Salida (Outbound)
 
-## 5. Plan de Implementación
+1. **WorkerThreadPort**: Interfaz para worker threads
+   - createWorker(): Crea nuevo worker thread
+   - terminateWorker(): Finaliza worker thread
+   - executeTask(): Ejecuta tarea en worker
+   - getWorkerMetrics(): Obtiene métricas
+   - getAllWorkers(): Lista workers activos
 
-### Fase 1: Transformación a Microservicios y Kubernetes
-1. Refactorizar arquitectura para modelo de microservicios
-2. Crear manifiestos de Kubernetes para cada componente
-3. Implementar pipeline CI/CD para despliegue automatizado
-4. Configurar monitoreo y logging distribuido
+2. **ClusterManagerPort**: Gestión de workers en cluster
+   - initialize(): Inicializa cluster con N workers
+   - scale(): Escala cluster
+   - distributeRequest(): Distribuye peticiones HTTP
+   - executeTask(): Ejecuta tarea en worker de cluster
+   - getClusterMetrics(): Obtiene métricas de cluster
+   - shutdown(): Cierre ordenado
 
-### Fase 2: Gestión Automatizada de Portafolio
-1. Desarrollar sistema de análisis multi-mercado
-2. Implementar algoritmo de rotación de activos
-3. Crear sistema de balanceo dinámico de portafolio
-4. Integrar optimización de Kelly para gestión de capital
+3. **ChildProcessPort**: Interfaz para procesos hijo
+   - spawnProcess(): Crea proceso hijo
+   - killProcess(): Finaliza proceso
+   - executeTask(): Ejecuta tarea en proceso
+   - getProcessMetrics(): Obtiene métricas
+   - getAllProcesses(): Lista procesos activos
 
-### Fase 3: Automatización de Operaciones
-1. Implementar escaneo periódico programado como CronJobs
-2. Desarrollar sistema distribuido de alertas y notificaciones
-3. Crear respaldo automático y recuperación de estado
+4. **MetricsStorePort**: Almacenamiento de métricas
+   - storeMetric(): Guarda punto de datos de métrica
+   - queryMetrics(): Consulta métricas por rango
+   - storeEvent(): Guarda evento del sistema
+   - getRecentEvents(): Obtiene eventos recientes
 
-### Fase 4: Optimización y Escalado
-1. Implementar análisis de rendimiento en tiempo real
-2. Desarrollar ajuste automático de parámetros
-3. Configurar escalado automático basado en condiciones de mercado
+### 3.5 Core Application (Casos de Uso)
 
-## 6. Priorización Sugerida
+1. **TaskDistributionService**:
+   - Distribuye tareas entre workers según tipo y disponibilidad
+   - Realiza asignación óptima utilizando algoritmos de análisis
+   - Controla ciclo de vida de tareas entre estados
 
-| Automatización | Dificultad | Impacto | Prioridad |
-|----------------|------------|---------|-----------|
-| Migración a arquitectura Kubernetes | Alta | Alto | 1 |
-| Sistema de gestión de portafolio | Alta | Alto | 2 |
-| Rotación automática de activos | Media | Alto | 3 |
-| Escaneo automático periódico | Media | Alto | 4 |
-| Pipeline CI/CD para despliegue | Media | Medio | 5 |
-| Recuperación automática ante fallos | Media | Alto | 6 |
-| Informes automáticos | Baja | Medio | 7 |
-| Optimización basada en feedback | Alta | Alto | 8 |
+2. **WorkerManagementService**:
+   - Escala pools de workers según demanda
+   - Monitorea y recupera workers con problemas
+   - Actualiza métricas de todos los workers
 
-## 7. Arquitectura para Despliegue en Kubernetes
+3. **MonitoringService**:
+   - Registra tareas completadas para métricas
+   - Calcula y almacena métricas de rendimiento
+   - Proporciona estado actual del sistema
 
-### 7.1 Diseño de Microservicios
-- Servicio de Análisis de Mercado: Escaneo y ranking de oportunidades
-- Servicio de Gestión de Portafolio: Decisiones de balanceo y rotación
-- Servicio de Ejecución de Órdenes: Comunicación con exchanges
-- Servicio de Monitoreo: Métricas y alertas del sistema
-- Servicio de Telegram Bot: Interfaz de usuario
+### 3.6 Adaptadores
 
-### 7.2 Componentes de Infraestructura
-- StatefulSets para servicios con estado (base de datos)
-- Deployments para servicios sin estado
-- CronJobs para tareas programadas (escaneos periódicos)
-- ConfigMaps y Secrets para configuración y credenciales
-- PersistentVolumes para almacenamiento persistente
+#### Adaptadores de Salida (Outbound)
 
-### 7.3 Escalabilidad y Resiliencia
-- Escalado horizontal automático de servicios críticos
-- Distribución geográfica para minimizar latencia
-- Recuperación automática ante fallos de nodos
-- Balanceo de carga para distribución óptima
+1. **WorkerThreadAdapter**:
+   - Implementa WorkerThreadPort usando Node.js Worker Threads
+   - Gestiona comunicación mediante mensajes IPC
+   - Controla ciclo de vida de los threads
 
-## 8. Seguridad y Cumplimiento
-### 8.1 Gestión de Secretos y Acceso
-- Rotación automática de claves y tokens cada 90 días con HashiCorp Vault + Kubernetes Secrets.
-- Política de mínimos privilegios (RBAC) para cada microservicio y para los usuarios del bot de Telegram.
+2. **ClusterAdapter**:
+   - Implementa ClusterManagerPort usando Node.js Cluster
+   - Gestiona escalado dinámico de workers
+   - Distribuye cargas de trabajo HTTP
 
-### 8.2 Escaneo y Hardening
-- Escaneo SAST/DAST e imágenes de contenedor (Trivy) en cada build de CI.
-- Uso de imágenes base minimalistas (Distroless) y firma de contenedores con cosign.
+3. **ChildProcessAdapter**:
+   - Implementa ChildProcessPort usando Node.js Child Process
+   - Ejecuta procesos aislados para tareas específicas
+   - Controla comunicación mediante stdio/IPC
 
-## 9. Observabilidad y Respuesta a Incidentes
-- Exportar métricas clave (latencia de órdenes, P & L, uso de CPU/memoria) a Prometheus y dashboards en Grafana.
-- Instrumentación con OpenTelemetry para trazas distribuídas.
-- Playbooks de incidentes y objetivos MTTR < 15 min.
+4. **MetricsStoreAdapter**:
+   - Implementa almacenamiento de métricas en memoria/DB
+   - Proporciona agregación y consulta de series temporales
+   - Registra eventos del sistema para debugging
 
-## 10. Testing y Calidad
-- Cobertura mínima del 80 % en pruebas unitarias e integrales.
-- Backtests automáticos de estrategias ejecutados en cada Pull Request.
-- Pruebas de resiliencia mediante chaos‑engineering liviano (e.g., kube‑monkey).
+#### Adaptadores de Entrada (Inbound)
 
-## 11. CI/CD e Infraestructura como Código
-- Flujo GitOps con Flux para desplegar manifiestos de Kubernetes.
-- Terraform para aprovisionar clúster, redes y servicios administrados.
-- Quality gates de linting y escaneo de seguridad en GitHub Actions.
+1. **RestApiAdapter**:
+   - Expone TaskManagerPort mediante API REST
+   - Proporciona endpoints para gestión de tareas
+   - Implementa validación y manejo de errores HTTP
 
-## 12. MLOps y DeepSeek
-- Pipeline nocturno de retraining y registro de modelos en MLflow.
-- Shadow deployment con canary del 5 % para validar nuevos modelos.
-- Feature store que versiona datasets históricos utilizados en entrenamiento.
+2. **CliAdapter**:
+   - Expone funcionalidad mediante interfaz de línea de comandos
+   - Permite operaciones básicas de gestión de tareas
+   - Muestra información de estado del sistema
 
-## 13. Back‑Office y Auditoría
-- Registro append‑only de todas las órdenes (PostgreSQL + WAL).
-- Firma hash + timestamp de cada evento para trazabilidad legal.
+## 4. Plan de Implementación
 
-## 14. Backup y Recuperación ante Desastres (DR)
-- Objetivos: RTO ≤ 30 min y RPO ≤ 5 min.
-- Snapshots cifrados diarios y réplicas cross‑region automáticas.
+La implementación seguirá estas fases:
 
-## 15. Gestión de Costes y Rendimiento
-- Políticas de auto‑scaling y alertas de presupuesto en el proveedor cloud.
-- Perfilado de latencia: ruta crítica ≤ 250 ms.
+### Fase 1: Estructura Base y Entidades Core
 
-## 16. Roadmap, KPIs y Gestión de Proyecto
-- Gantt ligero con hitos por fase (ver Fases 1‑4).
-- KPIs: uptime, P & L mensual, tasa de error, lead‑time de despliegue.
-- Asignación de responsables (owner por microservicio).
+1. Crear estructura de directorios según arquitectura hexagonal
+2. Implementar entidades de dominio (Task, Worker, WorkerPool)
+3. Implementar funciones puras para análisis y matemáticas
+4. Definir interfaces para puertos inbound y outbound
 
-## 17. Documentación y Developer Experience (DX)
-- Diagramas C4 actualizados y almacenados en el repositorio.
-- Manual de onboarding (setup local, flujos CI/CD).
-- Guía de estilo de código y convenciones de commit (Conventional Commits).
+### Fase 2: Adaptadores Outbound
 
-## 18. Interfaces y UX
-- **Bot de Telegram (única interfaz en la fase actual / MVP):**
-  - Comandos para consulta de balances, apertura / cierre de posiciones y ajustes de estrategia.
-  - Menús inline para operaciones frecuentes y visualización rápida de P & L.
-  - Notificaciones push de señales, ejecuciones y alertas de riesgo.
-- **Futuro (post‑MVP, Fase 4):**
-  - API REST/GraphQL pública para integraciones de terceros.
-  - Dashboard en React/Next.js con métricas en tiempo real.
-  - Aplicación móvil nativa o híbrida.
+1. Implementar WorkerThreadAdapter
+2. Implementar ClusterAdapter
+3. Implementar ChildProcessAdapter
+4. Implementar MetricsStoreAdapter (versión inicial en memoria)
 
-## 19. Legal y Riesgo Regulatorio
-- Disclaimer de riesgo y términos de uso visibles en el bot y la web.
-- Controles AML/CTF básicos (detección de banderas rojas en depósitos/retiros fiat).
-- Cumplimiento GDPR/Data Privacy para usuarios de la UE.
+### Fase 3: Casos de Uso Core
+
+1. Implementar TaskDistributionService
+2. Implementar WorkerManagementService
+3. Implementar MonitoringService
+4. Implementar contenedor DI para wire-up
+
+### Fase 4: Adaptadores Inbound y Scripts de Worker
+
+1. Implementar RestApiAdapter
+2. Implementar CliAdapter
+3. Crear scripts para worker threads
+4. Crear scripts para cluster workers
+5. Crear scripts para child processes
+
+### Fase 5: Testing, Documentación e Integración
+
+1. Implementar tests unitarios (>80% cobertura)
+2. Implementar tests de integración
+3. Crear documentación siguiendo Diátaxis
+4. Integrar con sistema de monitoreo (opcional)
+
+## 5. Estrategia de Testing
+
+La estrategia de testing cubrirá:
+
+1. **Tests unitarios**:
+   - Entidades de dominio y sus comportamientos
+   - Funciones puras de análisis y matemáticas
+   - Casos de uso con mocks de puertos
+
+2. **Tests de integración**:
+   - Funcionamiento de adaptadores con sistemas reales
+   - Interacción entre componentes principales
+
+3. **Tests de rendimiento**:
+   - Medición de throughput bajo diferentes cargas
+   - Evaluación de escalabilidad horizontal
+
+Objetivo de cobertura:
+- Core domain y funciones puras: >90%
+- Casos de uso y servicios: >85%
+- Adaptadores externos: >80%
+
+## 6. Documentación
+
+La documentación seguirá el framework Diátaxis:
+
+1. **Tutoriales**:
+   - Configuración inicial del sistema
+   - Implementación de worker personalizado
+   - Integración con aplicaciones existentes
+
+2. **Guías prácticas**:
+   - Optimización de distribución de tareas
+   - Escalado de workers según demanda
+   - Monitoreo y resolución de problemas
+
+3. **Referencias**:
+   - API completa de componentes
+   - Detalles de implementación
+   - Referencia de configuración
+
+4. **Explicaciones**:
+   - Principios arquitectónicos aplicados
+   - Algoritmos de scheduling y su funcionamiento
+   - Trade-offs de diseño y decisiones tomadas
+
+## 7. Métricas de Éxito
+
+El sistema se considerará exitoso si:
+
+1. Utiliza eficientemente múltiples CPUs (mejora >70% vs single-thread)
+2. Mantiene separación clara de responsabilidades (core vs adaptadores)
+3. Soporta escalado dinámico basado en carga
+4. Ofrece mecanismos robustos de recuperación ante fallos
+5. Proporciona métricas detalladas de rendimiento
+6. Cumple objetivos de cobertura de pruebas (>80%)
+
+## 8. Próximos Pasos
+
+1. Configurar repositorio con estructura base
+2. Implementar core domain y funciones puras
+3. Setup inicial de testing framework
+4. Implementar primer adaptador (worker threads)
+5. Crear demo funcional con flujo básico
+
+---
+
+Este plan servirá como guía para la implementación paso a paso de la arquitectura hexagonal de multithreading, asegurando que se respeten los principios de clean architecture y la separación de responsabilidades.

@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-05-02T13:50:51.702Z",
+  "signals": [
+    {
+      "symbol": "BTCUSDT",
+      "action": "HOLD",
+      "confidence": 0.7,
+      "reasoning": "Análisis de mercado incompleto, manteniendo posición."
+    },
+    {
+      "symbol": "ETHUSDT",
+      "action": "HOLD",
+      "confidence": 0.7,
+      "reasoning": "Análisis de mercado incompleto, manteniendo posición."
+    },
+    {
+      "symbol": "BNBUSDT",
+      "action": "HOLD",
+      "confidence": 0.7,
+      "reasoning": "Análisis de mercado incompleto, manteniendo posición."
+    },
+    {
+      "symbol": "ADAUSDT",
+      "action": "HOLD",
+      "confidence": 0.7,
+      "reasoning": "Análisis de mercado incompleto, manteniendo posición."
+    },
+    {
+      "symbol": "SOLUSDT",
+      "action": "HOLD",
+      "confidence": 0.7,
+      "reasoning": "Análisis de mercado incompleto, manteniendo posición."
+    }
+  ],
+  "backtestResults": {
+    "trades": [],
+    "finalCapital": 1000,
+    "profitLoss": 0,
+    "profitLossPercent": 0,
+    "maxDrawdown": 0,
+    "winRate": 0,
+    "tradesCount": 0
+  }
+}

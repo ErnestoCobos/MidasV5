@@ -96,7 +96,7 @@ export class TradeHistoryService {
         executionType: 'BOT'
       };
       
-      // Guardar en la base de datos
+      // Guardar en la base de datos PostgreSQL
       await tradeRepository.saveTrade(trade);
       
       logger.info({ 

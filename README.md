@@ -21,11 +21,18 @@ Sistema de trading algorítmico optimizado para el crecimiento de capital peque�
    - Utiliza el criterio de Kelly para optimizar el tamaño de las posiciones
    - Análisis básico del mercado para encontrar oportunidades
 
-2. **Gestor Dinámico de Portafolio** (`run-portfolio-manager.js`) - NUEVA FUNCIÓN
+2. **Gestor Dinámico de Portafolio** (`run-portfolio-manager.js`)
    - **Monitoreo continuo del mercado** para detectar nuevas oportunidades
    - **Rotación automática de activos** basada en DeepSeek y análisis técnico
    - **Interfaz interactiva** para ver el estado del portafolio y forzar rotaciones
    - **Análisis de correlación** para optimizar la diversificación
+   
+3. **Bot de Telegram con Arquitectura Hexagonal** (`telegram-bot-adapter`)
+   - **Integración con Telegram** para monitorear y controlar remotamente
+   - **Señales de Trading con IA** usando DeepSeek
+   - **Procesamiento Multihilo** para operaciones intensivas
+   - **Escaneo de Mercado** para detectar oportunidades en tiempo real
+   - **Arquitectura Hexagonal** con puertos y adaptadores para mejor mantenibilidad
 
 ## Cómo Ejecutar
 

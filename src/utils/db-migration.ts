@@ -102,10 +102,17 @@ export async function initializeDatabase(): Promise<boolean> {
     });
     
     // Probar la conexión
-    const connected = await db.testConnection();
+    // Intentar conexión a base de datos
+    let connected = false;
+    try {
+      connected = await db.testConnection();
+    } catch (err) {
+      logger.warn('Error al intentar conectar a PostgreSQL, continuando en modo sin base de datos');
+    }
+
     if (!connected) {
-      logger.error('No se pudo conectar a PostgreSQL');
-      return false;
+      logger.warn('No se pudo conectar a PostgreSQL - usando modo sin base de datos');
+      return true; // Permitir continuar sin base de datos
     }
     
     // Activar extensiones
@@ -131,8 +138,26 @@ export async function initializeDatabase(): Promise<boolean> {
     
     logger.info('Base de datos inicializada correctamente');
     return true;
-  } catch (error) {
-    logger.error({ error }, 'Error inicializando la base de datos');
+  } catch (error: any) {
+    // Capturar detalles completos del error para mejorar el diagnóstico
+    const errorObj = {
+      message: error?.message || 'Error desconocido',
+      code: error?.code || 'NO_CODE',
+      stack: (error?.stack || '').split('\n').slice(0, 3).join('\n') || 'No stack trace',
+      cause: error?.cause || 'Unknown cause'
+    };
+    
+    logger.error({ error: errorObj }, 'Error inicializando la base de datos');
+    
+    // Mensajes más descriptivos según el tipo de error
+    if (errorObj.code === 'ECONNREFUSED') {
+      logger.warn('PostgreSQL no está ejecutándose o no es accesible. El bot usará datos en memoria.');
+    } else if (errorObj.code === 'ENOTFOUND') {
+      logger.warn('Nombre de host de PostgreSQL no encontrado. Verifica la URL de conexión.');
+    } else if (errorObj.message.includes('authentication')) {
+      logger.warn('Error de autenticación en PostgreSQL. Revisa credenciales en variables de entorno.');
+    }
+    
     return false;
   }
 }
